@@ -824,6 +824,23 @@ def get_inbox_results(inbox_id):
     results = inbox_results.get(inbox_id, {})
     return jsonify(results)
 
+@app.route('/api/get-tasks', methods=['POST'])
+def get_tasks():
+    data = request.get_json()
+    email = data.get('email')
+    api_key = data.get('api_key')
+
+    # Optional: validate email/API key
+    # Lookup tasks in DB (or return static test data for now)
+    sample_tasks = [
+        {
+            "profile_url": "https://www.linkedin.com/in/example123",
+            "message": "Hi! This is a test message from your automation bot."
+        }
+    ]
+    return jsonify({"tasks": sample_tasks})
+
+
 @app.route('/logout')
 @login_required
 def logout():
