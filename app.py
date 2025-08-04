@@ -13,7 +13,9 @@ import time
 from collections import defaultdict
 import logging
 import random
-
+import requests
+from urllib.parse import urlparse
+import socket
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -83,6 +85,143 @@ def linkedin_setup_required(f):
 
 # Flask 3.x compatible initialization
 first_request = True
+
+class LocalClientManager:
+    def __init__(self):
+        self.default_client_url = "http://127.0.0.1:5001"
+        self.client_urls = {}  # user_id -> client_url mapping
+    
+    def register_client(self, user_id, client_url):
+        """Register a client URL for a user"""
+        self.client_urls[user_id] = client_url
+        logger.info(f"✅ Registered client for user {user_id}: {client_url}")
+    
+    def get_client_url(self, user_id):
+        """Get client URL for a user"""
+        return self.client_urls.get(user_id, self.default_client_url)
+    
+    def is_client_available(self, user_id):
+        """Check if local client is available"""
+        client_url = self.get_client_url(user_id)
+        try:
+            response = requests.get(f"{client_url}/health", timeout=5)
+            return response.status_code == 200
+        except Exception:
+            return False
+    
+    def send_campaign_request(self, user_id, campaign_data):
+        """Send campaign request to local client"""
+        client_url = self.get_client_url(user_id)
+        try:
+            user = User.query.get(user_id)
+            payload = {
+                'campaign_id': campaign_data['campaign_id'],
+                'user_config': {
+                    'linkedin_email': user.linkedin_email,
+                    'linkedin_password': user.get_linkedin_password(),
+                    'gemini_api_key': user.gemini_api_key
+                },
+                'campaign_data': campaign_data
+            }
+            
+            response = requests.post(f"{client_url}/start_campaign", json=payload, timeout=10)
+            return response.json()
+        except Exception as e:
+            logger.error(f"❌ Error sending campaign request: {e}")
+            return {'success': False, 'error': str(e)}
+    
+    def send_keyword_search_request(self, user_id, search_params):
+        """Send keyword search request to local client"""
+        client_url = self.get_client_url(user_id)
+        try:
+            user = User.query.get(user_id)
+            payload = {
+                'search_id': str(uuid.uuid4()),
+                'user_config': {
+                    'linkedin_email': user.linkedin_email,
+                    'linkedin_password': user.get_linkedin_password(),
+                    'gemini_api_key': user.gemini_api_key
+                },
+                'search_params': search_params
+            }
+            
+            response = requests.post(f"{client_url}/keyword_search", json=payload, timeout=10)
+            return response.json()
+        except Exception as e:
+            logger.error(f"❌ Error sending keyword search request: {e}")
+            return {'success': False, 'error': str(e)}
+    
+    def send_inbox_processing_request(self, user_id):
+        """Send inbox processing request to local client"""
+        client_url = self.get_client_url(user_id)
+        try:
+            user = User.query.get(user_id)
+            payload = {
+                'process_id': str(uuid.uuid4()),
+                'user_config': {
+                    'linkedin_email': user.linkedin_email,
+                    'linkedin_password': user.get_linkedin_password(),
+                    'gemini_api_key': user.gemini_api_key
+                }
+            }
+            
+            response = requests.post(f"{client_url}/process_inbox", json=payload, timeout=10)
+            return response.json()
+        except Exception as e:
+            logger.error(f"❌ Error sending inbox processing request: {e}")
+            return {'success': False, 'error': str(e)}
+
+# Initialize the client manager
+client_manager = LocalClientManager()
+
+@app.route('/client_setup')
+@login_required
+def client_setup():
+    """Show client setup instructions"""
+    user = get_current_user()
+    client_available = client_manager.is_client_available(user.id)
+    
+    return render_template('client_setup.html', 
+                         user=user, 
+                         client_available=client_available,
+                         client_url=client_manager.get_client_url(user.id))
+
+@app.route('/register_client', methods=['POST'])
+@login_required
+def register_client():
+    """Register local client URL"""
+    try:
+        user = get_current_user()
+        client_url = request.json.get('client_url', 'http://127.0.0.1:5001')
+        
+        # Validate URL format
+        parsed = urlparse(client_url)
+        if not parsed.scheme or not parsed.netloc:
+            return jsonify({'success': False, 'error': 'Invalid URL format'}), 400
+        
+        # Test connection
+        try:
+            response = requests.get(f"{client_url}/health", timeout=5)
+            if response.status_code != 200:
+                return jsonify({'success': False, 'error': 'Client not responding'}), 400
+        except Exception as e:
+            return jsonify({'success': False, 'error': f'Cannot connect to client: {e}'}), 400
+        
+        # Register client
+        client_manager.register_client(user.id, client_url)
+        
+        return jsonify({'success': True, 'message': 'Client registered successfully'})
+        
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/check_client_status')
+@login_required
+def check_client_status():
+    """Check if local client is available"""
+    user = get_current_user()
+    available = client_manager.is_client_available(user.id)
+    return jsonify({'available': available})
 
 @app.before_request
 def before_first_request():
@@ -362,225 +501,21 @@ def start_campaign():
         if not campaign_data:
             return jsonify({'error': 'no campaign'}), 400
         
-        cid = campaign_data['campaign_id']
+        # Check if local client is available
+        if not client_manager.is_client_available(user.id):
+            return jsonify({
+                'error': 'Local client not available. Please start the local client application.',
+                'redirect': '/client_setup'
+            }), 400
         
-        if automation_status['running']:
-            return jsonify({'error': 'already running'}), 400
-
-        # Reset flags
-        campaign_controls[cid] = {'stop': False, 'action': None}
-        automation_status.update({
-            'running': True,
-            'awaiting': False,
-            'message': 'Initializing LinkedIn...',
-            'progress': 0,
-            'total': campaign_data['max_contacts'],
-            'current': None
-        })
-
-        def worker():
-            bot = None
-            try:
-                # Initialize LinkedIn automation
-                logger.info("🚀 Starting LinkedIn automation")
-                automation_status['message'] = 'Connecting to LinkedIn...'
-                
-                bot = LinkedInAutomation(
-                    api_key=user.gemini_api_key,
-                    email=user.linkedin_email,
-                    password=user.get_linkedin_password()
-                )
-                
-                # Login to LinkedIn
-                automation_status['message'] = 'Logging into LinkedIn...'
-                if not bot.login():
-                    automation_status.update(
-                        running=False, 
-                        awaiting=False, 
-                        message='LinkedIn login failed!'
-                    )
-                    return
-                
-                logger.info("✅ LinkedIn login successful")
-                automation_status['message'] = 'LinkedIn connected successfully'
-                
-                # Initialize results
-                results = {
-                    'success': True,
-                    'successful_contacts': 0,
-                    'failed_contacts': 0,
-                    'skipped_contacts': 0,
-                    'already_messaged': 0,  # New counter
-                    'contacts_processed': []
-                }
-
-                # Process contacts up to max_contacts limit
-                contacts_to_process = campaign_data['contacts'][:campaign_data['max_contacts']]
-                
-                for idx, contact in enumerate(contacts_to_process):
-                    if campaign_controls[cid]['stop']:
-                        automation_status.update(
-                            running=False, 
-                            awaiting=False, 
-                            message='Stopped by user'
-                        )
-                        break
-
-                    try:
-                        # Get LinkedIn URL
-                        linkedin_url = contact.get('LinkedIn_profile', '')
-                        if not linkedin_url or 'linkedin.com/in/' not in linkedin_url:
-                            logger.warning(f"Invalid LinkedIn URL for {contact['Name']}")
-                            results['failed_contacts'] += 1
-                            automation_status['progress'] += 1
-                            continue
-                        
-                        # **NEW: CHECK IF ALREADY MESSAGED**
-                        if bot.is_profile_messaged(linkedin_url):
-                            logger.info(f"⏭️ Skipping {contact['Name']} - already messaged previously")
-                            results['already_messaged'] += 1
-                            automation_status['progress'] += 1
-                            
-                            # Add to processed list
-                            contact_result = {
-                                'name': contact['Name'],
-                                'company': contact['Company'],
-                                'role': contact['Role'],
-                                'linkedin_url': linkedin_url,
-                                'message': 'Already messaged previously',
-                                'success': False,
-                                'method': 'already_messaged',
-                                'timestamp': datetime.now().isoformat()
-                            }
-                            results['contacts_processed'].append(contact_result)
-                            continue
-                        
-                        automation_status['message'] = f"Processing {contact['Name']}..."
-                        logger.info(f"🌐 Navigating to {contact['Name']}'s profile")
-                        
-                        # Navigate to profile
-                        bot.driver.get(linkedin_url)
-                        time.sleep(3)  # Wait for page to load
-                        
-                        # Extract profile data
-                        profile_data = bot.extract_profile_data()
-                        
-                        # Generate personalized message
-                        automation_status['message'] = f"Generating message for {contact['Name']}..."
-                        msg = bot.generate_message(
-                            contact['Name'], 
-                            contact['Company'], 
-                            contact['Role'],
-                            contact.get('services and products_1', ''),
-                            contact.get('services and products_2', ''),
-                            profile_data
-                        )
-                        
-                        # Wait for user approval
-                        automation_status.update(
-                            awaiting=True,
-                            current={**contact, 'message': msg},
-                            message=f'Awaiting approval for {contact["Name"]} ({idx+1}/{len(contacts_to_process)})'
-                        )
-                        
-                        # Wait for user decision
-                        while not campaign_controls[cid]['action']:
-                            if campaign_controls[cid]['stop']:
-                                break
-                            time.sleep(0.5)
-
-                        action = campaign_controls[cid]['action']
-                        campaign_controls[cid]['action'] = None  # Reset
-                        automation_status['awaiting'] = False
-
-                        if campaign_controls[cid]['stop']:
-                            automation_status.update(
-                                running=False,
-                                message='Stopped by user'
-                            )
-                            break
-
-                        # Process user decision
-                        contact_result = {
-                            'name': contact['Name'],
-                            'company': contact['Company'],
-                            'role': contact['Role'],
-                            'linkedin_url': linkedin_url,
-                            'message': msg,
-                            'success': False,
-                            'method': None,
-                            'timestamp': datetime.now().isoformat()
-                        }
-
-                        if action == 'skip':
-                            logger.info(f"⏭️ User skipped {contact['Name']}")
-                            results['skipped_contacts'] += 1
-                            contact_result['method'] = 'user_skipped'
-                            automation_status['progress'] += 1
-                            results['contacts_processed'].append(contact_result)
-                            continue
-
-                        # action == 'send'
-                        automation_status['message'] = f"Sending connection request to {contact['Name']}..."
-                        logger.info(f"🤝 Sending connection request to {contact['Name']}")
-                        
-                        # Try to send connection request
-                        success = bot.send_connection_request_with_note(msg, contact['Name'])
-                        
-                        if success:
-                            logger.info(f"✅ Connection request sent to {contact['Name']}")
-                            results['successful_contacts'] += 1
-                            contact_result['success'] = True
-                            contact_result['method'] = 'connection_with_note'
-                            
-                            # **ADD TO TRACKING - This is the key part**
-                            bot.add_profile_to_tracked(linkedin_url)
-                            
-                            # Human-like delay between successful sends
-                            time.sleep(random.uniform(30, 60))
-                            
-                        else:
-                            logger.error(f"❌ Failed to send connection request to {contact['Name']}")
-                            results['failed_contacts'] += 1
-                            contact_result['method'] = 'failed'
-
-                        automation_status['progress'] += 1
-                        results['contacts_processed'].append(contact_result)
-                        
-                    except Exception as e:
-                        logger.error(f"❌ Error processing {contact['Name']}: {str(e)}")
-                        results['failed_contacts'] += 1
-                        automation_status['progress'] += 1
-                        continue
-
-                # Campaign completed
-                automation_status.update(
-                    running=False, 
-                    awaiting=False,
-                    message='Campaign completed successfully!'
-                )
-                
-                campaign_results[cid] = results
-                logger.info(f"✅ Campaign completed: {results['successful_contacts']} successful, {results['failed_contacts']} failed, {results['skipped_contacts']} user skipped, {results['already_messaged']} already messaged")
-                
-            except Exception as e:
-                logger.error(f"💥 Campaign error: {str(e)}")
-                automation_status.update(
-                    running=False, 
-                    awaiting=False,
-                    message=f'Campaign error: {str(e)}'
-                )
-                campaign_results[cid] = {'success': False, 'error': str(e)}
-                
-            finally:
-                if bot:
-                    bot.close()
-
-        # Start worker thread
-        threading.Thread(target=worker, daemon=True).start()
+        # Send request to local client
+        result = client_manager.send_campaign_request(user.id, campaign_data)
         
-        # Return response to Flask
-        return jsonify({'success': True, 'campaign_id': cid})
+        if result.get('success'):
+            flash('Campaign started on local client!', 'success')
+            return jsonify(result)
+        else:
+            return jsonify(result), 400
         
     except Exception as e:
         logger.error(f"❌ Start campaign error: {str(e)}")
@@ -728,36 +663,55 @@ def keyword_search():
     user = get_current_user()
     
     if request.method == 'POST':
-        keywords = request.form.get('keywords', '').strip()
-        max_invites = int(request.form.get('max_invites', 10))
-        
-        if not keywords:
-            flash('Please enter keywords for search.', 'error')
-            return render_template('keyword_search.html', user=user)
-        
         try:
-            # Initialize automation
-            bot = LinkedInAutomation(
-                email=user.linkedin_email,
-                password=user.get_linkedin_password(),
-                api_key=user.gemini_api_key
-            )
+            search_keywords = request.form.get('keywords', '').strip()
+            location = request.form.get('location', '').strip()
+            search_type = request.form.get('search_type', 'search_only')
+            max_invites = int(request.form.get('max_invites', 10))
+
+            if not search_keywords:
+                flash('Please enter search keywords!', 'error')
+                return render_template('keyword_search.html', user=user)
             
-            result = bot.search_and_connect(keywords=keywords, max_invites=max_invites)
-            bot.driver.quit()  # Important: Close browser
+            # Check if local client is available
+            if not client_manager.is_client_available(user.id):
+                flash('Local client not available. Please start the local client application.', 'error')
+                return redirect(url_for('client_setup'))
             
-            if isinstance(result, dict) and not result.get('success', True):
-                flash(f"Error: {result.get('error')}", 'error')
+            search_params = {
+                'keywords': search_keywords,
+                'location': location,
+                'search_type': search_type,
+                'max_invites': max_invites
+            }
+            
+            # Send request to local client
+            result = client_manager.send_keyword_search_request(user.id, search_params)
+            
+            if result.get('success'):
+                flash('Keyword search started on local client!', 'success')
+                session['current_search'] = {
+                    'search_id': result.get('search_id'),
+                    'keywords': search_keywords,
+                    'location': location,
+                    'search_type': search_type,
+                    'max_invites': max_invites
+                }
             else:
-                flash(f"Keyword search completed. Invitations sent: {result}", 'success')
-                
-            return render_template('keyword_search.html', user=user, keywords=keywords, invites_sent=result)
-        
+                flash(f'Search failed: {result.get("error")}', 'error')
+            
+            return redirect(url_for('keyword_search'))
+            
         except Exception as e:
-            flash(f"Unexpected error during keyword search: {str(e)}", 'error')
+            flash(f'Search error: {str(e)}', 'error')
             return render_template('keyword_search.html', user=user)
     
-    return render_template('keyword_search.html', user=user)
+    # GET request - show form and any previous search results
+    search_info = session.get('current_search')
+    return render_template('keyword_search.html', 
+                         user=user,
+                         search_info=search_info,
+                         client_available=client_manager.is_client_available(user.id))
 
 @app.route('/search_results/<search_id>')
 @login_required
@@ -773,50 +727,30 @@ def ai_inbox():
     
     if request.method == 'POST':
         try:
-            # Generate inbox processing ID
-            inbox_id = str(uuid.uuid4())
+            # Check if local client is available
+            if not client_manager.is_client_available(user.id):
+                flash('Local client not available. Please start the local client application.', 'error')
+                return redirect(url_for('client_setup'))
             
-            def process_inbox():
-                try:
-                    automation_instance = LinkedInAutomation(
-                        api_key=user.gemini_api_key,
-                        email=user.linkedin_email,
-                        password=user.get_linkedin_password()
-                    )
-                    
-                    results = automation_instance.process_inbox_replies()
-                    inbox_results[inbox_id] = results
-                    
-                except Exception as e:
-                    logger.error(f"Inbox processing error: {e}")
-                    inbox_results[inbox_id] = {'success': False, 'error': str(e)}
-                finally:
-                    if automation_instance:
-                        automation_instance.close()
+            # Send request to local client
+            result = client_manager.send_inbox_processing_request(user.id)
             
-            # Start inbox processing in background
-            inbox_thread = threading.Thread(target=process_inbox)
-            inbox_thread.daemon = True
-            inbox_thread.start()
+            if result.get('success'):
+                flash('Inbox processing started on local client!', 'success')
+                session['current_inbox_process'] = result.get('process_id')
+            else:
+                flash(f'Inbox processing failed: {result.get("error")}', 'error')
             
-            session['current_inbox_process'] = inbox_id
-            flash('Inbox processing started! Check results below.', 'success')
             return redirect(url_for('ai_inbox'))
             
         except Exception as e:
             flash(f'Inbox processing error: {str(e)}', 'error')
             return render_template('ai_inbox.html', user=user)
     
-    # Check for inbox results
-    inbox_id = session.get('current_inbox_process')
-    inbox_result = None
-    
-    if inbox_id:
-        inbox_result = inbox_results.get(inbox_id)
-    
+    # GET request - show status
     return render_template('ai_inbox.html', 
                          user=user,
-                         inbox_result=inbox_result)
+                         client_available=client_manager.is_client_available(user.id))
 
 @app.route('/inbox_results/<inbox_id>')
 @login_required
@@ -857,7 +791,66 @@ def tasks():
                 'message': contact['message']
             })
     return jsonify(tasks=tasks)
+@app.route('/api/campaign_progress', methods=['POST'])
+def receive_campaign_progress():
+    """Receive campaign progress from local client"""
+    try:
+        data = request.json
+        campaign_id = data.get('campaign_id')
+        progress = data.get('progress', {})
+        is_final = data.get('final', False)
+        
+        # Store progress in campaign_results
+        campaign_results[campaign_id] = progress
+        
+        if is_final:
+            logger.info(f"✅ Campaign {campaign_id} completed")
+        
+        return jsonify({'success': True})
+        
+    except Exception as e:
+        logger.error(f"❌ Error receiving campaign progress: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
 
+@app.route('/api/search_results', methods=['POST'])
+def receive_search_results():
+    """Receive search results from local client"""
+    try:
+        data = request.json
+        search_id = data.get('search_id')
+        results = data.get('results', {})
+        
+        # Store results in search_results_cache
+        search_results_cache[search_id] = {
+            'type': 'client_search',
+            'results': results,
+            'timestamp': datetime.now().isoformat()
+        }
+        
+        logger.info(f"✅ Received search results for {search_id}")
+        return jsonify({'success': True})
+        
+    except Exception as e:
+        logger.error(f"❌ Error receiving search results: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/inbox_results', methods=['POST'])
+def receive_inbox_results():
+    """Receive inbox processing results from local client"""
+    try:
+        data = request.json
+        process_id = data.get('process_id')
+        results = data.get('results', {})
+        
+        # Store results in inbox_results
+        inbox_results[process_id] = results
+        
+        logger.info(f"✅ Received inbox results for {process_id}")
+        return jsonify({'success': True})
+        
+    except Exception as e:
+        logger.error(f"❌ Error receiving inbox results: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/logout')
 @login_required
