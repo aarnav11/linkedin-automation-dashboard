@@ -170,6 +170,16 @@ class LocalClientManager:
         except Exception as e:
             logger.error(f"❌ Error sending inbox processing request: {e}")
             return {'success': False, 'error': str(e)}
+    
+    def send_campaign_action(self, user_id, payload):
+        """Send campaign action (send/skip/edit) to local client"""
+        client_url = self.get_client_url(user_id)
+        try:
+            response = requests.post(f"{client_url}/campaign_action", json=payload, timeout=10)
+            return response.json()
+        except Exception as e:
+            logger.error(f"❌ Error sending campaign action: {e}")
+            return {'success': False, 'error': str(e)}
 
 # Initialize the client manager
 client_manager = LocalClientManager()
@@ -492,35 +502,64 @@ def outreach():
 
 @app.route('/start_campaign', methods=['POST'])
 @login_required
-@linkedin_setup_required
 def start_campaign():
     try:
         user = get_current_user()
+        campaign_id = request.json.get('campaign_id')
+        
         campaign_data = session.get('current_campaign')
-        
-        if not campaign_data:
-            return jsonify({'error': 'no campaign'}), 400
-        
-        # Check if local client is available
+        if not campaign_data or campaign_data.get('campaign_id') != campaign_id:
+            return jsonify({'error': 'Campaign not found in session'}), 404
+
         if not client_manager.is_client_available(user.id):
             return jsonify({
-                'error': 'Local client not available. Please start the local client application.',
-                'redirect': '/client_setup'
+                'error': 'Local client not available. Please start it.',
+                'redirect': url_for('client_setup')
             }), 400
-        
-        # Send request to local client
-        result = client_manager.send_campaign_request(user.id, campaign_data)
+
+        # Enhanced campaign data with confirmation settings
+        enhanced_campaign_data = campaign_data.copy()
+        enhanced_campaign_data.update({
+            'requires_confirmation': True,  # Enable preview mode
+            'max_contacts_per_batch': 1,   # Process one contact at a time
+            'confirmation_timeout': 300,   # 5 minutes per contact decision
+            'auto_skip_timeout': True,     # Skip if no decision made
+            'priority_order': ['connection_with_note', 'connection_without_note', 'direct_message']
+        })
+
+        result = client_manager.send_campaign_request(user.id, enhanced_campaign_data)
         
         if result.get('success'):
-            flash('Campaign started on local client!', 'success')
             return jsonify(result)
         else:
-            return jsonify(result), 400
-        
+            return jsonify(result), 500
+
     except Exception as e:
         logger.error(f"❌ Start campaign error: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
+
+
+@app.route('/campaign_action', methods=['POST'])
+@login_required
+def campaign_action():
+    user = get_current_user()
+    data = request.json
+    campaign_id = data.get('campaign_id')
+    action = data.get('action')
+    message = data.get('message')
+
+    if not all([campaign_id, action]):
+        return jsonify({'success': False, 'error': 'Missing parameters'}), 400
+    
+    payload = {
+        'campaign_id': campaign_id,
+        'action': action,
+        'message': message
+    }
+
+    result = client_manager.send_campaign_action(user.id, payload)
+    return jsonify(result)
 
 @app.route('/stop_campaign', methods=['POST'])
 @login_required
@@ -547,8 +586,19 @@ def contact_action():
 @app.route('/campaign_results/<campaign_id>')
 @login_required
 def get_campaign_results(campaign_id):
-    results = campaign_results.get(campaign_id, {})
-    return jsonify(results)
+    # This route now gets campaign status directly from the client bot
+    # to ensure real-time data, including the 'awaiting_action' state.
+    user = get_current_user()
+    client_url = client_manager.get_client_url(user.id)
+    try:
+        response = requests.get(f"{client_url}/campaign_status/{campaign_id}", timeout=5)
+        if response.status_code == 200:
+            return jsonify(response.json())
+        else:
+            # Fallback to local cache if client is down
+            return jsonify(campaign_results.get(campaign_id, {}))
+    except Exception:
+        return jsonify(campaign_results.get(campaign_id, {}))
 
 @app.route('/campaign_status')
 @login_required
@@ -718,6 +768,82 @@ def keyword_search():
 def get_search_results(search_id):
     results = search_results_cache.get(search_id, {})
     return jsonify(results)
+
+
+@app.route('/preview_message', methods=['POST'])
+@login_required
+def preview_message():
+    """Preview message before sending in campaign - ENHANCED"""
+    try:
+        data = request.json
+        campaign_id = data.get('campaign_id')
+        
+        # Get current campaign status from client
+        user = get_current_user()
+        client_url = client_manager.get_client_url(user.id)
+        
+        try:
+            response = requests.get(f"{client_url}/campaign_status/{campaign_id}", timeout=5)
+            if response.status_code == 200:
+                campaign_status = response.json()
+                
+                if campaign_status.get('awaiting_confirmation'):
+                    current_contact_data = campaign_status.get('current_contact_preview', {})
+                    
+                    return jsonify({
+                        'success': True,
+                        'awaiting_confirmation': True,
+                        'contact': current_contact_data.get('contact', {}),
+                        'generated_message': current_contact_data.get('message', ''),
+                        'contact_index': current_contact_data.get('contact_index', 0)
+                    })
+                    
+        except Exception as e:
+            logger.error(f"Error getting campaign status: {e}")
+            
+        return jsonify({'success': False, 'error': 'No preview available'})
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/confirm_message_action', methods=['POST'])
+@login_required
+def confirm_message_action():
+    """Handle user decision on message (send/skip/edit)"""
+    try:
+        data = request.json
+        action = data.get('action')  # 'send', 'skip', 'edit'
+        campaign_id = data.get('campaign_id')
+        contact_index = data.get('contact_index')
+        message = data.get('message', '')
+        
+        if action not in ['send', 'skip', 'edit']:
+            return jsonify({'error': 'Invalid action'}), 400
+            
+        # Store user decision for the campaign worker
+        user = get_current_user()
+        decision_data = {
+            'campaign_id': campaign_id,
+            'contact_index': contact_index,
+            'action': action,
+            'message': message,
+            'timestamp': time.time()
+        }
+        
+        # Send decision to local client
+        payload = {
+            'campaign_id': campaign_id,
+            'action': action,
+            'contact_index': contact_index,
+            'message': message
+        }
+        
+        result = client_manager.send_campaign_action(user.id, payload)
+        return jsonify(result)
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/ai_inbox', methods=['GET', 'POST'])
 @login_required

@@ -796,24 +796,27 @@ class LinkedInAutomation:
             
         actual_name = profile_data.get('extracted_name', name) if profile_data else name
         about_snippet = profile_data.get('about_snippet', '') if profile_data else ''
-        
+        headline = profile_data.get('extracted_headline', role) if profile_data else role
         # Enhanced prompt for better personalization
-        message_template = f"""Create a highly personalized LinkedIn connection message for:
-- Name: {actual_name}
-- Company: {company}
-- Role: {role}
-- Services/Expertise: {service_1}, {service_2}
-- About: {about_snippet}
+        message_template = f"""You are a professional networking assistant. Write a personalized, concise, and professional LinkedIn connection request note (under 300 characters).
 
-Create a professional, engaging message under 280 characters that:
-1. Addresses them by name (ONLY USE FIRST NAMES)
-2. References their specific work/company
-3. Mentions a relevant connection point
-4. Has a clear call to action
-5. Return ONLY the message text, no labels or formatting.
-6. No content inside square brackets or quotes.
+        **Context about me (the sender):**
+        {service_1}
 
-Example tone: "Hi [FirstName], I noticed your innovative work in [specific area] at [Company]. I'm also passionate about [relevant connection] and would love to exchange insights on [specific topic]. Looking forward to connecting!"
+        **Information about the person I'm connecting with:**
+        - Name: {actual_name}
+        - Company: {company}
+        - Headline: {headline}
+        - Their 'About' section snippet: "{about_snippet}"
+
+        **Instructions:**
+        1.  Start with "Hi {actual_name.split()[0]},".
+        2.  Briefly mention a specific, impressive detail from their headline or company.
+        3.  State the reason for connecting clearly and concisely.
+        4.  Keep it professional, friendly, and under the character limit.
+        5.  **Crucially, return ONLY the message text.** Do not include any extra labels, quotes, or explanations.
+
+        **Example:** "Hi Jane, I was impressed by your work in product strategy at TechCorp. I'm also in the product space and would love to connect and exchange ideas. Thanks!"
 
 Return ONLY the message text, no labels or formatting."""
 
@@ -843,7 +846,622 @@ Return ONLY the message text, no labels or formatting."""
         # Fallback message
         fallback_msg = f"Hi {actual_name}, I'm impressed by your {role} work at {company}. I'd love to connect and exchange insights about {service_1 or 'industry trends'}. Looking forward to connecting!"
         return fallback_msg[:280]
+    
+    def send_message(self, message, name, company):
+        """Enhanced send_message function with standardized priority order and user confirmation"""
+        logger.info(f"🚀 Starting outreach process for {name} at {company}")
+        
+        try:
+            # Wait for page to load completely
+            WebDriverWait(self.driver, 15).until(
+                lambda d: d.execute_script('return document.readyState') == 'complete'
+            )
+            self.human_delay(2, 4)
+        except TimeoutException:
+            logger.warning("⚠️ Page load timeout - proceeding anyway")
 
+        # Extract profile data for better personalization
+        profile_data = self.extract_profile_data()
+
+        # PRIORITY 1: Try connection request with note (HIGHEST SUCCESS RATE)
+        logger.info("🎯 Priority 1: Attempting connection request with personalized note...")
+        if self.send_connection_request_with_note_enhanced(message, name):
+            logger.info(f"✅ Successfully sent connection request with note to {name}")
+            return True
+
+        # PRIORITY 2: Try connection request without note (FALLBACK)
+        logger.info("🎯 Priority 2: Attempting connection request without note...")
+        if self.send_connection_request_without_note_enhanced(name):
+            logger.info(f"✅ Successfully sent connection request without note to {name}")
+            return True
+
+        # PRIORITY 3: Try direct message (LAST RESORT - only for existing connections)
+        logger.info("🎯 Priority 3: Attempting direct message...")
+        if self.send_direct_message_enhanced(message, name):
+            logger.info(f"✅ Successfully sent direct message to {name}")
+            return True
+
+        # If all methods fail
+        logger.error(f"❌ All outreach methods failed for {name}")
+        return False
+
+    def send_connection_request_without_note_enhanced(self, name):
+        """Enhanced connection request without note"""
+        logger.info(f"🤝 Attempting to send connection request without note to {name}...")
+
+        # Find Connect button with multiple selectors
+        connect_button_selectors = [
+            ("css", "button.artdeco-button.artdeco-button--2.artdeco-button--primary[aria-label*='Connect']"),
+            ("xpath", "//button[contains(@aria-label, 'Connect') and contains(@class, 'artdeco-button--primary')]"),
+            ("xpath", "//button[.//span[text()='Connect']]"),
+            ("css", "button[aria-label*='Connect'][class*='artdeco-button']")
+        ]
+
+        connect_button = self.find_element_safe(connect_button_selectors, timeout=8)
+        
+        if not connect_button:
+            logger.info("🔍 Connect button not found, checking More menu...")
+            more_button_selectors = [
+                ("css", "button[aria-label*='More actions']"),
+                ("xpath", "//button[contains(@aria-label, 'More actions')]"),
+                ("xpath", "//button[.//span[text()='More']]"),
+                ("css", "button.artdeco-dropdown__trigger")
+            ]
+
+            more_button = self.find_element_safe(more_button_selectors, timeout=5)
+            if more_button and self.safe_click(more_button):
+                logger.info("✅ More menu clicked")
+                self.human_delay(1, 2)
+                
+                dropdown_connect_selectors = [
+                    ("xpath", "//div[contains(@class, 'artdeco-dropdown__content')]//span[text()='Connect']/ancestor::*[1]"),
+                    ("css", "[aria-expanded='true'] [aria-label*='Connect']"),
+                    ("xpath", "//div[contains(@class, 'artdeco-dropdown')]//span[text()='Connect']/parent::*")
+                ]
+
+                connect_button = self.find_element_safe(dropdown_connect_selectors, timeout=5)
+                if not connect_button:
+                    logger.error("❌ Connect option not found in More menu")
+                    return False
+            else:
+                logger.error("❌ Connect button not found")
+                return False
+
+        # Click Connect button
+        if not self.safe_click(connect_button):
+            logger.error("❌ Failed to click Connect button")
+            return False
+
+        logger.info("✅ Connect button clicked")
+        self.human_delay(2, 3)
+
+        try:
+            # Look for Send button (skip adding note)
+            send_request_selectors = [
+                ("css", "button[aria-label='Send now']"),
+                ("xpath", "//button[@aria-label='Send now']"),
+                ("css", "button[aria-label*='Send invitation']"),
+                ("xpath", "//button[contains(@aria-label, 'Send') and contains(@class, 'artdeco-button--primary')]"),
+                ("xpath", "//button[.//span[text()='Send']]"),
+                ("css", "button.artdeco-button--primary[aria-label*='Send']")
+            ]
+
+            send_button = self.find_element_safe(send_request_selectors, timeout=10)
+            if send_button and self.safe_click(send_button):
+                logger.info(f"✅ Connection request without note sent successfully to {name}!")
+                self.human_delay(2, 4)
+                return True
+            else:
+                logger.error("❌ Could not find or click send button")
+                return False
+
+        except Exception as e:
+            logger.error(f"❌ Error sending connection request without note: {e}")
+            self.driver.save_screenshot(f"connection_no_note_error_{name}_{int(time.time())}.png")
+            return False
+        
+    def send_connection_request_without_note(driver, name):
+        """Send connection request without a personalized note"""
+        logger.info(f"🤝 Attempting to send connection request without note to {name}...")
+        
+        # Find Connect button
+        connect_button_selectors = [
+            ("css", "button.artdeco-button.artdeco-button--2.artdeco-button--primary[aria-label*='Connect']"),
+            ("xpath", "//button[contains(@aria-label, 'Connect') and contains(@class, 'artdeco-button--primary')]"),
+            ("xpath", "//button[.//span[text()='Connect']]"),
+            ("css", "button[aria-label*='Connect'][class*='artdeco-button']")
+        ]
+        
+        connect_button = find_element_safe(driver, connect_button_selectors, timeout=8)
+        if not connect_button:
+            logger.info("🔍 Connect button not found, checking More menu...")
+            more_button_selectors = [
+                ("css", "button[aria-label*='More actions']"),
+                ("xpath", "//button[contains(@aria-label, 'More actions')]"),
+                ("xpath", "//button[.//span[text()='More']]"),
+                ("css", "button.artdeco-dropdown__trigger")
+            ]
+            more_button = find_element_safe(driver, more_button_selectors, timeout=5)
+            if more_button and safe_click(driver, more_button):
+                logger.info("✅ More menu clicked")
+                human_delay(1, 2)
+                dropdown_connect_selectors = [
+                    ("xpath", "//div[contains(@class, 'artdeco-dropdown__content')]//span[text()='Connect']/ancestor::*[1]"),
+                    ("css", "[aria-expanded='true'] [aria-label*='Connect']"),
+                    ("xpath", "//div[contains(@class, 'artdeco-dropdown')]//span[text()='Connect']/parent::*")
+                ]
+                connect_button = find_element_safe(driver, dropdown_connect_selectors, timeout=5)
+                if not connect_button:
+                    logger.error("❌ Connect option not found in More menu")
+                    return False
+            else:
+                logger.error("❌ Connect button not found")
+                return False
+        
+        # Click Connect button
+        if not safe_click(driver, connect_button):
+            logger.error("❌ Failed to click Connect button")
+            return False
+        
+        logger.info("✅ Connect button clicked")
+        human_delay(2, 3)
+        
+        try:
+            # Look for Send button (skip adding note)
+            send_request_selectors = [
+                ("css", "button[aria-label='Send now']"),
+                ("xpath", "//button[@aria-label='Send now']"),
+                ("css", "button[aria-label*='Send invitation']"),
+                ("xpath", "//button[contains(@aria-label, 'Send') and contains(@class, 'artdeco-button--primary')]"),
+                ("xpath", "//button[.//span[text()='Send']]"),
+                ("css", "button.artdeco-button--primary[aria-label*='Send']")
+            ]
+            
+            send_button = find_element_safe(driver, send_request_selectors, timeout=10)
+            if send_button and safe_click(driver, send_button):
+                logger.info(f"✅ Connection request without note sent successfully to {name}!")
+                human_delay(2, 4)
+                return True
+            else:
+                logger.error("❌ Could not find or click send button")
+                return False
+                
+        except Exception as e:
+            logger.error(f"❌ Error sending connection request without note: {e}")
+            driver.save_screenshot(f"connection_no_note_error_{name}_{int(time.time())}.png")
+            return False
+
+    def send_connection_request_with_note_enhanced(self, message, name):
+        """Enhanced connection request with note - based on LinkedIn_automation_script.py"""
+        logger.info(f"🤝 Attempting to send connection request with note to {name}...")
+        
+        # Find Connect button with multiple selectors
+        connect_button_selectors = [
+            ("css", "button.artdeco-button.artdeco-button--2.artdeco-button--primary[aria-label*='Connect']"),
+            ("xpath", "//button[contains(@aria-label, 'Connect') and contains(@class, 'artdeco-button--primary')]"),
+            ("xpath", "//button[.//span[text()='Connect']]"),
+            ("css", "button[aria-label*='Connect'][class*='artdeco-button']")
+        ]
+        
+        connect_button = self.find_element_safe(connect_button_selectors, timeout=8)
+        
+        if not connect_button:
+            logger.info("🔍 Connect button not found, checking More menu...")
+            more_button_selectors = [
+                ("css", "button[aria-label*='More actions']"),
+                ("xpath", "//button[contains(@aria-label, 'More actions')]"),
+                ("xpath", "//button[.//span[text()='More']]"),
+                ("css", "button.artdeco-dropdown__trigger")
+            ]
+            
+            more_button = self.find_element_safe(more_button_selectors, timeout=5)
+            if more_button and self.safe_click(more_button):
+                logger.info("✅ More menu clicked")
+                self.human_delay(1, 2)
+                
+                dropdown_connect_selectors = [
+                    ("xpath", "//div[contains(@class, 'artdeco-dropdown__content')]//span[text()='Connect']/ancestor::*[1]"),
+                    ("css", "[aria-expanded='true'] [aria-label*='Connect']"),
+                    ("xpath", "//div[contains(@class, 'artdeco-dropdown')]//span[text()='Connect']/parent::*")
+                ]
+                
+                connect_button = self.find_element_safe(dropdown_connect_selectors, timeout=5)
+                
+                if not connect_button:
+                    logger.error("❌ Connect option not found in More menu")
+                    return False
+            else:
+                logger.error("❌ Connect button not found")
+                return False
+
+        # Click Connect button
+        if not self.safe_click(connect_button):
+            logger.error("❌ Failed to click Connect button")
+            return False
+        
+        logger.info("✅ Connect button clicked")
+        self.human_delay(2, 3)
+
+        try:
+            # Look for "Add a note" button
+            add_note_selectors = [
+                ("css", "button[aria-label='Add a note']"),
+                ("xpath", "//button[@aria-label='Add a note']"),
+                ("xpath", "//button[.//span[text()='Add a note']]"),
+                ("css", "button[aria-label*='Add a note']"),
+                ("xpath", "//button[contains(text(), 'Add a note')]")
+            ]
+            
+            add_note_button = self.find_element_safe(add_note_selectors, timeout=8)
+            
+            if not add_note_button:
+                logger.info("❌ Add a note button not found - cannot send with note")
+                # Close the connection dialog if it's open
+                try:
+                    close_button = self.driver.find_element(By.CSS_SELECTOR, "button[aria-label*='Dismiss'], button[aria-label*='Cancel']")
+                    self.safe_click(close_button)
+                except:
+                    pass
+                return False
+
+            # Click "Add a note"
+            if not self.safe_click(add_note_button):
+                logger.error("❌ Failed to click Add a note button")
+                return False
+            
+            logger.info("✅ Add a note clicked")
+            self.human_delay(1, 2)
+
+            # Find and fill note text area
+            note_area_selectors = [
+                ("css", "textarea[name='message']"),
+                ("css", "#custom-message"),
+                ("css", "textarea[aria-label*='note']"),
+                ("css", ".connect-note-form textarea"),
+                ("xpath", "//textarea[@name='message']")
+            ]
+            
+            note_area = self.find_element_safe(note_area_selectors, timeout=8)
+            if not note_area:
+                logger.error("❌ Could not find note text area")
+                return False
+
+            # Type the personalized message
+            self.type_like_human(note_area, message)
+            logger.info("✅ Personalized note added successfully")
+            self.human_delay(1, 2)
+
+            # Find and click Send button
+            send_request_selectors = [
+                ("css", "button[aria-label='Send now']"),
+                ("xpath", "//button[@aria-label='Send now']"),
+                ("css", "button[aria-label*='Send invitation']"),
+                ("xpath", "//button[contains(@aria-label, 'Send')]"),
+                ("xpath", "//button[.//span[text()='Send']]")
+            ]
+            
+            send_button = self.find_element_safe(send_request_selectors, timeout=10)
+            if send_button and self.safe_click(send_button):
+                logger.info(f"✅ Connection request with note sent successfully to {name}!")
+                self.human_delay(2, 4)
+                return True
+            else:
+                logger.error("❌ Could not find or click send button")
+                return False
+
+        except Exception as e:
+            logger.error(f"❌ Error sending connection request with note: {e}")
+            self.driver.save_screenshot(f"connection_note_error_{name}_{int(time.time())}.png")
+            return False
+        
+    def send_direct_message_enhanced(self, message, name):
+        """Enhanced direct message function with robust button detection"""
+        logger.info(f"🔍 Attempting to locate Message button for {name}...")
+
+        # Multiple selector strategies for the Message button
+        message_button_selectors = [
+            ("css", "button[aria-label*='Message'][class*='artdeco-button']"),
+            ("css", "button.artdeco-button--primary[aria-label*='Message']"),
+            ("xpath", "//button[contains(@aria-label, 'Message') and contains(@class, 'artdeco-button')]"),
+            ("xpath", "//button[.//span[text()='Message']]"),
+            ("css", "button[data-control-name*='message']"),
+            ("css", "button.pvs-profile-actions__action[aria-label*='Message']"),
+            ("css", "button[aria-label*='Message']"),
+            ("xpath", "//button[contains(text(), 'Message')]"),
+            ("xpath", "//span[text()='Message']/parent::button")
+        ]
+
+        msg_btn = None
+        for selector_type, selector in message_button_selectors:
+            try:
+                if selector_type == "xpath":
+                    msg_btn = WebDriverWait(self.driver, 6).until(
+                        EC.element_to_be_clickable((By.XPATH, selector))
+                    )
+                else:
+                    msg_btn = WebDriverWait(self.driver, 6).until(
+                        EC.element_to_be_clickable((By.CSS_SELECTOR, selector))
+                    )
+
+                if msg_btn and msg_btn.is_displayed() and msg_btn.is_enabled():
+                    logger.info(f"✅ Message button found using: {selector}")
+                    break
+                else:
+                    msg_btn = None
+            except (TimeoutException, NoSuchElementException):
+                continue
+
+        if not msg_btn:
+            logger.info("❌ No Message button found - user may not be a 1st degree connection")
+            return False
+
+        # Click message button
+        try:
+            self.driver.execute_script("arguments[0].scrollIntoView({behavior: 'smooth', block: 'center'});", msg_btn)
+            self.human_delay(1, 2)
+
+            if not self.safe_click(msg_btn):
+                ActionChains(self.driver).move_to_element(msg_btn).click().perform()
+
+            logger.info("✅ Message button clicked successfully")
+            self.human_delay(2, 3)
+        except Exception as e:
+            logger.error(f"❌ Failed to click Message button: {e}")
+            return False
+
+        # Enhanced message composition
+        compose_selectors = [
+            ("css", ".msg-form__contenteditable"),
+            ("css", "[data-test-id='message-composer-input']"),
+            ("css", "div[role='textbox'][contenteditable='true']"),
+            ("xpath", "//textarea[@aria-label='Write a message…']"),
+            ("css", ".msg-form__msg-content-container--scrollable .msg-form__contenteditable"),
+            ("css", "div[contenteditable='true'][role='textbox']")
+        ]
+
+        compose_box = None
+        for selector_type, selector in compose_selectors:
+            try:
+                if selector_type == "xpath":
+                    compose_box = WebDriverWait(self.driver, 8).until(
+                        EC.element_to_be_clickable((By.XPATH, selector))
+                    )
+                else:
+                    compose_box = WebDriverWait(self.driver, 8).until(
+                        EC.element_to_be_clickable((By.CSS_SELECTOR, selector))
+                    )
+
+                if compose_box:
+                    logger.info(f"✅ Message compose area found using: {selector}")
+                    break
+            except (TimeoutException, NoSuchElementException):
+                continue
+
+        if not compose_box:
+            logger.error("❌ Could not find message compose area")
+            return False
+
+        # Type the message
+        try:
+            compose_box.click()
+            self.human_delay(0.5, 1)
+            compose_box.clear()
+
+            # Type message character by character
+            for char in message:
+                compose_box.send_keys(char)
+                time.sleep(random.uniform(0.05, 0.15))
+
+            logger.info("✅ Message typed successfully")
+            self.human_delay(1, 2)
+        except Exception as e:
+            logger.error(f"❌ Failed to type message: {e}")
+            return False
+
+        # Send the message
+        send_button_selectors = [
+            ("css", "button.msg-form__send-button[type='submit']"),
+            ("css", "button[data-control-name='send_message']"),
+            ("xpath", "//button[@type='submit' and .//span[text()='Send']]"),
+            ("xpath", "//button[contains(@aria-label, 'Send') and @type='submit']"),
+            ("css", "button[aria-label*='Send message']")
+        ]
+
+        send_btn = None
+        for selector_type, selector in send_button_selectors:
+            try:
+                if selector_type == "xpath":
+                    send_btn = WebDriverWait(self.driver, 6).until(
+                        EC.element_to_be_clickable((By.XPATH, selector))
+                    )
+                else:
+                    send_btn = WebDriverWait(self.driver, 6).until(
+                        EC.element_to_be_clickable((By.CSS_SELECTOR, selector))
+                    )
+
+                if send_btn and send_btn.is_enabled():
+                    logger.info(f"✅ Send button found using: {selector}")
+                    break
+            except (TimeoutException, NoSuchElementException):
+                continue
+
+        if not send_btn or not send_btn.is_enabled():
+            logger.error("❌ Send button not found or not enabled")
+            return False
+
+        try:
+            if self.safe_click(send_btn):
+                logger.info(f"🎉 Message sent successfully to {name}!")
+                self.human_delay(1, 2)
+                return True
+            else:
+                logger.error("❌ Failed to click Send button")
+                return False
+        except Exception as e:
+            logger.error(f"❌ Error sending message: {e}")
+            return False
+            
+    def send_direct_message(driver, message, name):
+        """Enhanced direct message function with robust button detection"""
+        logger.info(f"🔍 Attempting to locate Message button for {name}...")
+        
+        # Multiple selector strategies for the Message button
+        message_button_selectors = [
+            # Primary selectors (most reliable)
+            ("css", "button[aria-label*='Message'][class*='artdeco-button']"),
+            ("css", "button.artdeco-button--primary[aria-label*='Message']"),
+            ("xpath", "//button[contains(@aria-label, 'Message') and contains(@class, 'artdeco-button')]"),
+            
+            # Secondary selectors based on common patterns
+            ("xpath", "//button[.//span[text()='Message']]"),
+            ("css", "button[data-control-name*='message']"),
+            ("css", "button.pvs-profile-actions__action[aria-label*='Message']"),
+            
+            # Fallback selectors
+            ("css", "button[aria-label*='Message']"),
+            ("xpath", "//button[contains(text(), 'Message')]"),
+            ("xpath", "//span[text()='Message']/parent::button")
+        ]
+        
+        msg_btn = None
+        for selector_type, selector in message_button_selectors:
+            try:
+                if selector_type == "xpath":
+                    msg_btn = WebDriverWait(driver, 6).until(
+                        EC.element_to_be_clickable((By.XPATH, selector))
+                    )
+                else:
+                    msg_btn = WebDriverWait(driver, 6).until(
+                        EC.element_to_be_clickable((By.CSS_SELECTOR, selector))
+                    )
+                
+                # Verify button is actually visible and enabled
+                if msg_btn and msg_btn.is_displayed() and msg_btn.is_enabled():
+                    logger.info(f"✅ Message button found using: {selector}")
+                    break
+                else:
+                    msg_btn = None
+                    
+            except (TimeoutException, NoSuchElementException):
+                continue
+        
+        if not msg_btn:
+            logger.info("❌ No Message button found - user may not be a 1st degree connection")
+            return False
+        
+        # Scroll button into view and click
+        try:
+            driver.execute_script("arguments[0].scrollIntoView({behavior: 'smooth', block: 'center'});", msg_btn)
+            human_delay(1, 2)
+            
+            # Try clicking the button
+            if not safe_click(driver, msg_btn):
+                # Alternative click method
+                ActionChains(driver).move_to_element(msg_btn).click().perform()
+                
+            logger.info("✅ Message button clicked successfully")
+            human_delay(2, 3)
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to click Message button: {e}")
+            return False
+        
+        # Enhanced message composition with multiple selectors
+        compose_selectors = [
+            ("css", ".msg-form__contenteditable"),
+            ("css", "[data-test-id='message-composer-input']"),
+            ("css", "div[role='textbox'][contenteditable='true']"),
+            ("xpath", "//textarea[@aria-label='Write a message…']"),
+            ("css", ".msg-form__msg-content-container--scrollable .msg-form__contenteditable"),
+            ("css", "div[contenteditable='true'][role='textbox']")
+        ]
+        
+        compose_box = None
+        for selector_type, selector in compose_selectors:
+            try:
+                if selector_type == "xpath":
+                    compose_box = WebDriverWait(driver, 8).until(
+                        EC.element_to_be_clickable((By.XPATH, selector))
+                    )
+                else:
+                    compose_box = WebDriverWait(driver, 8).until(
+                        EC.element_to_be_clickable((By.CSS_SELECTOR, selector))
+                    )
+                
+                if compose_box:
+                    logger.info(f"✅ Message compose area found using: {selector}")
+                    break
+                    
+            except (TimeoutException, NoSuchElementException):
+                continue
+        
+        if not compose_box:
+            logger.error("❌ Could not find message compose area")
+            return False
+        
+        # Type the message with human-like behavior
+        try:
+            compose_box.click()
+            human_delay(0.5, 1)
+            compose_box.clear()
+            
+            # Type message character by character
+            for char in message:
+                compose_box.send_keys(char)
+                time.sleep(random.uniform(0.05, 0.15))
+                
+            logger.info("✅ Message typed successfully")
+            human_delay(1, 2)
+            
+        except Exception as e:
+            logger.error(f"❌ Failed to type message: {e}")
+            return False
+        
+        # Enhanced Send button detection
+        send_button_selectors = [
+            ("css", "button.msg-form__send-button[type='submit']"),
+            ("css", "button[data-control-name='send_message']"),
+            ("xpath", "//button[@type='submit' and .//span[text()='Send']]"),
+            ("xpath", "//button[contains(@aria-label, 'Send') and @type='submit']"),
+            ("css", "button[aria-label*='Send message']")
+        ]
+        
+        send_btn = None
+        for selector_type, selector in send_button_selectors:
+            try:
+                if selector_type == "xpath":
+                    send_btn = WebDriverWait(driver, 6).until(
+                        EC.element_to_be_clickable((By.XPATH, selector))
+                    )
+                else:
+                    send_btn = WebDriverWait(driver, 6).until(
+                        EC.element_to_be_clickable((By.CSS_SELECTOR, selector))
+                    )
+                
+                if send_btn and send_btn.is_enabled():
+                    logger.info(f"✅ Send button found using: {selector}")
+                    break
+                    
+            except (TimeoutException, NoSuchElementException):
+                continue
+        
+        if not send_btn or not send_btn.is_enabled():
+            logger.error("❌ Send button not found or not enabled")
+            return False
+        
+        # Send the message
+        try:
+            if safe_click(driver, send_btn):
+                logger.info(f"🎉 Message sent successfully to {name}!")
+                human_delay(1, 2)
+                return True
+            else:
+                logger.error("❌ Failed to click Send button")
+                return False
+                
+        except Exception as e:
+            logger.error(f"❌ Error sending message: {e}")
+            return False
     def process_inbox_replies(self, max_replies=5):
         """Process unread messages with improved reliability."""
         logger.info("🤖 Starting AI inbox processing...")
@@ -1360,6 +1978,22 @@ Response:"""
         except Exception as e:
             logger.warning(f"Next page navigation error: {e}")
             return False
+    def find_element_safe(self, selectors, timeout=10):
+        """Enhanced element finding with multiple selectors"""
+        for selector_type, selector in selectors:
+            try:
+                if selector_type == "xpath":
+                    element = WebDriverWait(self.driver, timeout).until(
+                        EC.element_to_be_clickable((By.XPATH, selector))
+                    )
+                else:
+                    element = WebDriverWait(self.driver, timeout).until(
+                        EC.element_to_be_clickable((By.CSS_SELECTOR, selector))
+                    )
+                return element
+            except TimeoutException:
+                continue
+        return None
     
     def find_connect_buttons_enhanced(self):
         """Enhanced button detection with multiple strategies"""

@@ -3,119 +3,54 @@
 {% block title %}Dashboard - LinkedIn Automation{% endblock %}
 
 {% block content %}
-<div class="dashboard-container">
+<div class="container">
     <div class="dashboard-header">
         <h1>Welcome back, {{ user.first_name }}!</h1>
-        <p>Manage your LinkedIn automation campaigns efficiently</p>
+        <p class="text-muted">Manage your LinkedIn automation campaigns efficiently.</p>
     </div>
 
     {% if not user.has_linkedin_setup() %}
-    <div class="setup-warning">
-        <div class="warning-content">
-            <i class="fas fa-exclamation-triangle"></i>
-            <div>
-                <strong>Setup Required</strong>
-                <p>Please configure your LinkedIn settings to start using automation features.</p>
-            </div>
-            <a href="{{ url_for('settings') }}" class="setup-btn">
-                <i class="fas fa-cog"></i>
-                Go to Settings
-            </a>
+    <div class="alert alert-warning">
+        <div>
+            <strong>Setup Required:</strong>
+            <p class="mb-0">Please configure your LinkedIn settings to start using automation features.</p>
         </div>
+        <a href="{{ url_for('settings') }}" class="btn btn-sm btn-secondary" style="margin-left: auto;">
+            <i class="fas fa-cog"></i>
+            Go to Settings
+        </a>
     </div>
     {% endif %}
 
     <div class="dashboard-grid">
-        <div class="dashboard-card {% if not user.has_linkedin_setup() %}disabled{% endif %}">
-            <div class="card-icon">
-                <i class="fas fa-robot"></i>
-            </div>
-            <h3>AI Message Handler</h3>
-            <p>Generate and optimize LinkedIn messages using AI</p>
-            <a href="{{ url_for('ai_handler') }}" class="card-button">
-                <i class="fas fa-arrow-right"></i>
-                Open AI Assistant
-            </a>
-        </div>
+        <a href="{{ url_for('ai_inbox') }}" class="dashboard-card {% if not user.has_linkedin_setup() %}disabled{% endif %}">
+            <div class="card-icon"><i class="fas fa-robot"></i></div>
+            <h3>AI Inbox</h3>
+            <p>Let AI manage and respond to your LinkedIn messages.</p>
+            <span class="card-button">Open AI Inbox <i class="fas fa-arrow-right"></i></span>
+        </a>
 
-        <div class="dashboard-card {% if not user.has_linkedin_setup() %}disabled{% endif %}">
-            <div class="card-icon">
-                <i class="fas fa-paper-plane"></i>
-            </div>
+        <a href="{{ url_for('outreach') }}" class="dashboard-card {% if not user.has_linkedin_setup() %}disabled{% endif %}">
+            <div class="card-icon"><i class="fas fa-paper-plane"></i></div>
             <h3>Outreach Campaigns</h3>
-            <p>Upload contacts and manage connection requests</p>
-            <a href="{{ url_for('outreach') }}" class="card-button">
-                <i class="fas fa-arrow-right"></i>
-                Start Outreach
-            </a>
-        </div>
+            <p>Upload contacts and manage connection requests.</p>
+            <span class="card-button">Start Outreach <i class="fas fa-arrow-right"></i></span>
+        </a>
 
-        <div class="dashboard-card {% if not user.has_linkedin_setup() %}disabled{% endif %}">
-            <div class="card-icon">
-                <i class="fas fa-search"></i>
-            </div>
+        <a href="{{ url_for('keyword') }}" class="dashboard-card {% if not user.has_linkedin_setup() %}disabled{% endif %}">
+            <div class="card-icon"><i class="fas fa-search"></i></div>
             <h3>Keyword Search</h3>
-            <p>Find and connect with targeted LinkedIn profiles</p>
-            <a href="{{ url_for('keyword') }}" class="card-button">
-                <i class="fas fa-arrow-right"></i>
-                Search Profiles
-            </a>
-        </div>
+            <p>Find and connect with targeted profiles.</p>
+            <span class="card-button">Search Profiles <i class="fas fa-arrow-right"></i></span>
+        </a>
 
-        <div class="dashboard-card">
-            <div class="card-icon">
-                <i class="fas fa-cog"></i>
-            </div>
-            <h3>Settings</h3>
-            <p>Configure your LinkedIn credentials and preferences</p>
-            <a href="{{ url_for('settings') }}" class="card-button">
-                <i class="fas fa-arrow-right"></i>
-                Open Settings
-            </a>
-        </div>
+        <a href="{{ url_for('client_setup') }}" class="dashboard-card">
+             <div class="card-icon"><i class="fas fa-desktop"></i></div>
+            <h3>Client Setup</h3>
+            <p>Download and manage your local client connection.</p>
+            <span class="card-button">Configure Client <i class="fas fa-arrow-right"></i></span>
+        </a>
     </div>
 
-    <div class="dashboard-info">
-        <div class="info-card">
-            <h3>Account Information</h3>
-            <div class="info-item">
-                <strong>Name:</strong> {{ user.get_full_name() }}
-            </div>
-            <div class="info-item">
-                <strong>Email:</strong> {{ user.email }}
-            </div>
-            <div class="info-item">
-                <strong>Member Since:</strong> {{ user.created_at.strftime('%B %d, %Y') }}
-            </div>
-            <div class="info-item">
-                <strong>LinkedIn Setup:</strong> 
-                <span class="status-badge {% if user.has_linkedin_setup() %}status-active{% else %}status-inactive{% endif %}">
-                    {% if user.has_linkedin_setup() %}
-                        <i class="fas fa-check-circle"></i> Configured
-                    {% else %}
-                        <i class="fas fa-times-circle"></i> Not Configured
-                    {% endif %}
-                </span>
-            </div>
-        </div>
-
-        <div class="info-card">
-            <h3>Quick Stats</h3>
-            <div class="stats-grid">
-                <div class="stat-item">
-                    <span class="stat-number">{{ stats.active_campaigns }}</span>
-                    <span class="stat-label">Active Campaigns</span>
-                </div>
-                <div class="stat-item">
-                    <span class="stat-number">{{ stats.messages_sent }}</span>
-                    <span class="stat-label">Messages Sent</span>
-                </div>
-                <div class="stat-item">
-                    <span class="stat-number">{{ stats.connections_made }}</span>
-                    <span class="stat-label">Connections Made</span>
-                </div>
-            </div>
-        </div>
-    </div>
 </div>
 {% endblock %}

@@ -16,35 +16,34 @@
                 <i class="fab fa-linkedin"></i>
                 <span>LinkedIn Automation</span>
             </div>
-            <!-- Update the nav-links section -->
+            
             <div class="nav-links">
-            <a href="{{ url_for('dashboard') }}" class="nav-link {% if request.endpoint == 'dashboard' %}active{% endif %}">
-            <i class="fas fa-tachometer-alt"></i> Dashboard
-        </a>
-        <a href="{{ url_for('settings') }}" class="nav-link {% if request.endpoint == 'settings' %}active{% endif %}">
-            <i class="fas fa-cog"></i> Settings
-        </a>
-        <a href="{{ url_for('ai_handler') }}" class="nav-link {% if request.endpoint == 'ai_handler' %}active{% endif %}">
-            <i class="fas fa-robot"></i> AI Assistant
-        </a>
-        <a href="{{ url_for('ai_inbox') }}" class="nav-link {% if request.endpoint == 'ai_inbox' %}active{% endif %}">
-            <i class="fas fa-inbox"></i> AI Inbox
-        </a>
-        <a href="{{ url_for('outreach') }}" class="nav-link {% if request.endpoint == 'outreach' %}active{% endif %}">
-            <i class="fas fa-paper-plane"></i> Outreach
-        </a>
-        <a href="{{ url_for('keyword') }}" class="nav-link {% if request.endpoint == 'keyword' %}active{% endif %}">
-            <i class="fas fa-search"></i> Search
-        </a>
-        <div class="nav-user">
-        <span class="user-name">{{ session.user_name }}</span>
-        <a href="{{ url_for('logout') }}" class="nav-link logout">
-            <i class="fas fa-sign-out-alt"></i> Logout
-        </a>
-    </div>
-    </div>
-</div>
+                <a href="{{ url_for('dashboard') }}" class="nav-link {% if request.endpoint == 'dashboard' %}active{% endif %}">
+                    <i class="fas fa-tachometer-alt fa-fw"></i> Dashboard
+                </a>
+                <a href="{{ url_for('ai_inbox') }}" class="nav-link {% if request.endpoint == 'ai_inbox' %}active{% endif %}">
+                    <i class="fas fa-inbox fa-fw"></i> AI Inbox
+                </a>
+                <a href="{{ url_for('outreach') }}" class="nav-link {% if request.endpoint == 'outreach' %}active{% endif %}">
+                    <i class="fas fa-paper-plane fa-fw"></i> Outreach
+                </a>
+                <a href="{{ url_for('keyword') }}" class="nav-link {% if request.endpoint == 'keyword' %}active{% endif %}">
+                    <i class="fas fa-search fa-fw"></i> Search
+                </a>
+                 <a href="{{ url_for('client_setup') }}" class="nav-link {% if request.endpoint == 'client_setup' %}active{% endif %}">
+                    <i class="fas fa-desktop fa-fw"></i> Client Setup
+                </a>
+            </div>
 
+            <div class="nav-user">
+                <button id="theme-toggle" class="theme-toggle" title="Toggle theme">
+                    <i class="fas fa-moon"></i>
+                </button>
+                <span class="user-name">{{ session.user_name }}</span>
+                <a href="{{ url_for('logout') }}" class="nav-link logout">
+                    <i class="fas fa-sign-out-alt fa-fw"></i> Logout
+                </a>
+            </div>
         </div>
     </nav>
     {% endif %}
@@ -55,9 +54,9 @@
                 <div class="flash-messages">
                     {% for category, message in messages %}
                         <div class="flash-message flash-{{ category }}">
-                            <i class="fas fa-{% if category == 'error' %}exclamation-triangle{% elif category == 'success' %}check-circle{% elif category == 'warning' %}exclamation-circle{% else %}info-circle{% endif %}"></i>
-                            {{ message }}
-                            <button class="flash-close" onclick="this.parentElement.remove()">×</button>
+                            <i class="fas fa-fw fa-{% if category == 'error' %}exclamation-triangle{% elif category == 'success' %}check-circle{% elif category == 'warning' %}exclamation-circle{% else %}info-circle{% endif %}"></i>
+                            <span>{{ message }}</span>
+                            <button class="flash-close" onclick="this.parentElement.remove()">&times;</button>
                         </div>
                     {% endfor %}
                 </div>
@@ -68,15 +67,49 @@
     </main>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
+    <script src="https://stackpath.bootstrapcdn.com/bootstrap/4.5.2/js/bootstrap.bundle.min.js"></script>
+    
     <script>
-        // Auto-hide flash messages after 5 seconds
+        // --- THEME TOGGLE ---
+        const themeToggle = document.getElementById('theme-toggle');
+        const sunIcon = '<i class="fas fa-sun"></i>';
+        const moonIcon = '<i class="fas fa-moon"></i>';
+
+        // Set initial theme on page load
+        (function() {
+            const storedTheme = localStorage.getItem('theme');
+            if (storedTheme === 'dark' || (!storedTheme && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+                document.documentElement.classList.add('dark');
+                themeToggle.innerHTML = sunIcon;
+            } else {
+                themeToggle.innerHTML = moonIcon;
+            }
+        })();
+
+        // Handle theme toggle click
+        themeToggle.addEventListener('click', () => {
+            if (document.documentElement.classList.toggle('dark')) {
+                localStorage.setItem('theme', 'dark');
+                themeToggle.innerHTML = sunIcon;
+            } else {
+                localStorage.setItem('theme', 'light');
+                themeToggle.innerHTML = moonIcon;
+            }
+        });
+
+
+        // --- FLASH MESSAGES ---
         setTimeout(function() {
-            $('.flash-message').fadeOut();
+            $('.flash-message').fadeOut('slow');
         }, 5000);
 
-        // Add loading states to buttons
-        $('button[type="submit"]').click(function() {
-            $(this).html('<i class="fas fa-spinner fa-spin"></i> Processing...');
+        // --- BUTTON LOADING STATE ---
+        $('form').submit(function() {
+            const btn = $(this).find('button[type="submit"]');
+            // Make sure not to affect buttons inside modals or other elements
+            if(btn.length > 0) {
+                 btn.html('<i class="fas fa-spinner fa-spin"></i> Processing...').prop('disabled', true);
+            }
         });
     </script>
     {% block scripts %}{% endblock %}

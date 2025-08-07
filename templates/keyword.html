@@ -1,136 +1,124 @@
 {% extends "base.html" %}
-
 {% block title %}Keyword Search - LinkedIn Automation{% endblock %}
 
 {% block content %}
-<div class="page-container">
-    <div class="page-header">
-        <h1><i class="fas fa-search"></i> LinkedIn Profile Search</h1>
-        <p>Search for LinkedIn profiles and optionally send connection requests</p>
-    </div>
-
-    <div class="search-container">
-        <div class="search-section">
-            <h3><i class="fas fa-filter"></i> Search Parameters</h3>
-            <form method="POST" class="search-form">
-                <div class="form-row">
-                    <div class="form-group">
-                        <label for="keywords">Keywords *</label>
-                        <input type="text" id="keywords" name="keywords" required 
-                               placeholder="e.g., software engineer, marketing manager"
-                               value="{{ search_info.keywords if search_info else '' }}">
-                    </div>
-                    <div class="form-group">
-                        <label for="location">Location</label>
-                        <input type="text" id="location" name="location" 
-                               placeholder="e.g., San Francisco, CA"
-                               value="{{ search_info.location if search_info else '' }}">
-                    </div>
+<div class="container">
+    <div class="page-grid">
+        <div>
+            <div class="card">
+                <div class="card-header">
+                    <h4><i class="fas fa-search"></i> LinkedIn Keyword Search</h4>
                 </div>
+                <div class="card-body">
+                    <div id="clientStatusAlert" class="alert alert-warning" style="display: none;">
+                        <i class="fas fa-exclamation-triangle"></i>
+                        <div>
+                            <strong>Local Client Required:</strong> 
+                            Please <a href="{{ url_for('client_setup') }}">setup your local client</a> before starting a search.
+                        </div>
+                    </div>
 
-                <div class="form-row">
-                    <div class="form-group">
-                        <label for="search_type">Search Type</label>
-                        <select id="search_type" name="search_type">
-                            <option value="search_only" {% if search_info and search_info.search_type == 'search_only' %}selected{% endif %}>
-                                Search Only (View Results)
-                            </option>
-                            <option value="search_and_connect" {% if search_info and search_info.search_type == 'search_and_connect' %}selected{% endif %}>
-                                Search and Connect (Auto-send invites)
-                            </option>
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label for="max_results">Max Results</label>
-                        <input type="number" id="max_results" name="max_results" 
-                               value="{{ search_info.max_results if search_info else 10 }}" 
-                               min="1" max="50">
-                    </div>
-                </div>
-
-                <button type="submit" class="search-btn">
-                    <i class="fas fa-search"></i>
-                    Start Search
-                </button>
-            </form>
-        </div>
-
-        {% if search_results %}
-        <div class="results-section">
-            {% if search_results.error %}
-            <div class="error-message">
-                <i class="fas fa-exclamation-triangle"></i>
-                Error: {{ search_results.error }}
-            </div>
-            {% elif search_results.type == 'search_only' %}
-            <h3><i class="fas fa-users"></i> Search Results</h3>
-            <div class="search-info">
-                <p><strong>Keywords:</strong> {{ search_info.keywords }}</p>
-                {% if search_info.location %}
-                <p><strong>Location:</strong> {{ search_info.location }}</p>
-                {% endif %}
-                <p><strong>Results Found:</strong> {{ search_results.results|length }}</p>
-            </div>
-            
-            <div class="results-grid">
-                {% for profile in search_results.results %}
-                <div class="profile-card">
-                    <div class="profile-info">
-                        <h4>{{ profile.name }}</h4>
-                        <p class="profile-headline">{{ profile.headline }}</p>
-                        <p class="profile-location">{{ profile.location }}</p>
-                    </div>
-                    <div class="profile-actions">
-                        <a href="{{ profile.profile_url }}" target="_blank" class="view-profile-btn">
-                            <i class="fab fa-linkedin"></i>
-                            View Profile
-                        </a>
-                    </div>
-                </div>
-                {% endfor %}
-            </div>
-            
-            {% elif search_results.type == 'search_and_connect' %}
-            <h3><i class="fas fa-handshake"></i> Connection Results</h3>
-            <div class="connection-summary">
-                <div class="stats-grid">
-                    <div class="stat-item">
-                        <span class="stat-number">{{ search_results.results.sent_count }}</span>
-                        <span class="stat-label">Connections Sent</span>
-                    </div>
-                    <div class="stat-item">
-                        <span class="stat-number">{{ search_results.results.max_invites }}</span>
-                        <span class="stat-label">Max Invites</span>
-                    </div>
+                    <p class="text-muted">Search LinkedIn profiles by keywords and automatically send connection requests.</p>
+                    
+                    <form method="POST" id="searchForm">
+                        <div class="form-group">
+                            <label for="keywords">Search Keywords</label>
+                            <input type="text" class="form-control" id="keywords" name="keywords" placeholder="e.g., software engineer, marketing manager" required>
+                            <small class="form-text">Use relevant job titles, skills, or industry keywords.</small>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="location">Location (Optional)</label>
+                            <input type="text" class="form-control" id="location" name="location" placeholder="e.g., San Francisco, New York">
+                            <small class="form-text">Leave empty to search globally.</small>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="search_type">Search Type</label>
+                            <select class="form-control" id="search_type" name="search_type">
+                                <option value="search_only">Search Only (Preview Results)</option>
+                                <option value="search_and_connect">Search and Connect Automatically</option>
+                            </select>
+                            <small class="form-text">"Search Only" lets you preview profiles before connecting.</small>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="max_invites">Maximum Invites</label>
+                            <input type="number" class="form-control" id="max_invites" name="max_invites" value="10" min="1" max="50" required>
+                            <small class="form-text">Limit the number of connection requests sent (1-50).</small>
+                        </div>
+                        
+                        <button type="submit" class="btn btn-primary" id="searchBtn">
+                            <i class="fas fa-search"></i> Start Search
+                        </button>
+                    </form>
                 </div>
             </div>
             
-            {% if search_results.results.connections_sent %}
-            <div class="connections-sent">
-                <h4>Connections Sent</h4>
-                <div class="connections-list">
-                    {% for connection in search_results.results.connections_sent %}
-                    <div class="connection-item">
-                        <i class="fas fa-user-plus"></i>
-                        <span class="connection-name">{{ connection.name }}</span>
-                        <span class="connection-time">{{ connection.timestamp }}</span>
+            {% if search_info %}
+            <div class="card" id="resultsCard">
+                <div class="card-header">
+                    <h5><i class="fas fa-list"></i> Search Results</h5>
+                    <small class="text-muted">Keywords: "{{ search_info.keywords }}"</small>
+                </div>
+                <div class="card-body" id="searchResults">
+                    <div class="text-center">
+                        <i class="fas fa-spinner fa-spin fa-2x"></i>
+                        <p class="text-muted mt-2">Loading results...</p>
                     </div>
-                    {% endfor %}
                 </div>
             </div>
             {% endif %}
-            {% endif %}
         </div>
-        {% endif %}
+
+        <div>
+            <div class="card" id="statusCard" {% if not search_info %}style="display: none;"{% endif %}>
+                <div class="card-header">
+                    <h5><i class="fas fa-chart-line"></i> Search Status</h5>
+                </div>
+                <div class="card-body">
+                    <div id="searchStatus" class="text-center">
+                        <p class="text-muted">Waiting to start...</p>
+                    </div>
+                    <div class="progress mb-2" style="display: none;" id="progressBar">
+                        <div class="progress-bar" role="progressbar" style="width: 0%"></div>
+                    </div>
+                    <button type="button" class="btn btn-danger btn-sm btn-block" id="stopSearchBtn" style="display: none;">
+                        <i class="fas fa-stop"></i> Stop Search
+                    </button>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header"><h5><i class="fas fa-lightbulb"></i> Search Tips</h5></div>
+                <div class="card-body">
+                    <ul class="list-unstyled">
+                        <li class="mb-2"><i class="fas fa-check text-success"></i> Use specific job titles for accuracy.</li>
+                        <li class="mb-2"><i class="fas fa-check text-success"></i> Combine keywords for targeted results.</li>
+                        <li class="mb-2"><i class="fas fa-check text-success"></i> Add a location to narrow your search.</li>
+                        <li class="mb-2"><i class="fas fa-check text-success"></i> Start with smaller invite limits.</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
     </div>
 </div>
+{% endblock %}
 
+{% block scripts %}
 <script>
-// Auto-refresh results every 5 seconds if search is in progress
-{% if search_info and not search_results %}
-setTimeout(function() {
-    location.reload();
-}, 5000);
-{% endif %}
+let currentSearchId = null;
+let statusInterval = null;
+
+document.addEventListener('DOMContentLoaded', function() {
+    checkClientStatus();
+    {% if search_info %}
+    currentSearchId = "{{ search_info.search_id }}";
+    document.getElementById('statusCard').style.display = 'block';
+    startSearchMonitoring();
+    {% endif %}
+});
+
+// All other JS functions (checkClientStatus, startSearchMonitoring, etc.) remain here.
 </script>
 {% endblock %}

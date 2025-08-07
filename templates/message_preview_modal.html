@@ -1,0 +1,179 @@
+<!-- Message Preview Modal -->
+<div class="modal fade" id="messagePreviewModal" tabindex="-1" aria-labelledby="messagePreviewModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="messagePreviewModalLabel">Message Preview</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div id="previewContent">
+                    <div class="card mb-3">
+                        <div class="card-header">
+                            <h6 class="mb-0">Contact Details</h6>
+                        </div>
+                        <div class="card-body">
+                            <p><strong>Name:</strong> <span id="contactName"></span></p>
+                            <p><strong>Company:</strong> <span id="contactCompany"></span></p>
+                            <p><strong>Role:</strong> <span id="contactRole"></span></p>
+                            <p><strong>LinkedIn:</strong> <a href="#" id="contactLinkedIn" target="_blank">View Profile</a></p>
+                        </div>
+                    </div>
+                    
+                    <div class="card mb-3">
+                        <div class="card-header">
+                            <h6 class="mb-0">Generated Message</h6>
+                        </div>
+                        <div class="card-body">
+                            <textarea class="form-control" id="messageContent" rows="4"></textarea>
+                            <small class="form-text text-muted">
+                                Character count: <span id="charCount">0</span>/280
+                            </small>
+                        </div>
+                    </div>
+                </div>
+                
+                <div id="previewLoading" class="text-center" style="display: none;">
+                    <div class="spinner-border" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <p>Generating personalized message...</p>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <div class="btn-group w-100" role="group">
+                    <button type="button" class="btn btn-success" id="sendMessageBtn">
+                        <i class="fas fa-paper-plane"></i> Send Message
+                    </button>
+                    <button type="button" class="btn btn-warning" id="editMessageBtn">
+                        <i class="fas fa-edit"></i> Edit Message
+                    </button>
+                    <button type="button" class="btn btn-secondary" id="skipContactBtn">
+                        <i class="fas fa-skip-forward"></i> Skip Contact
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+let currentCampaignId = '';
+let currentContactIndex = 0;
+
+function showMessagePreview(campaignId, contactIndex) {
+    currentCampaignId = campaignId;
+    currentContactIndex = contactIndex;
+    
+    $('#previewContent').hide();
+    $('#previewLoading').show();
+    $('#messagePreviewModal').modal('show');
+    
+    $.ajax({
+        url: '/preview_message',
+        method: 'POST',
+        contentType: 'application/json',
+        data: JSON.stringify({
+            campaign_id: campaignId,
+            contact_index: contactIndex
+        }),
+        success: function(response) {
+            if (response.success) {
+                // Populate contact details
+                $('#contactName').text(response.contact.Name || 'N/A');
+                $('#contactCompany').text(response.contact.Company || 'N/A');
+                $('#contactRole').text(response.contact.Role || 'N/A');
+                $('#contactLinkedIn').attr('href', response.contact.LinkedIn_profile || '#');
+                
+                // Populate message
+                $('#messageContent').val(response.generated_message);
+                updateCharCount();
+                
+                $('#previewLoading').hide();
+                $('#previewContent').show();
+            } else {
+                alert('Error loading preview: ' + response.error);
+                $('#messagePreviewModal').modal('hide');
+            }
+        },
+        error: function() {
+            alert('Error loading message preview');
+            $('#messagePreviewModal').modal('hide');
+        }
+    });
+}
+
+function updateCharCount() {
+    const messageLength = $('#messageContent').val().length;
+    $('#charCount').text(messageLength);
+    
+    if (messageLength > 280) {
+        $('#charCount').addClass('text-danger');
+    } else {
+        $('#charCount').removeClass('text-danger');
+    }
+}
+
+function sendConfirmedMessage(action) {
+    const message = $('#messageContent').val();
+    
+    if (action === 'send' && message.length > 280) {
+        alert('Message is too long. Please keep it under 280 characters.');
+        return;
+    }
+    
+    $.ajax({
+        url: '/confirm_message_action',
+        method: 'POST',
+        contentType: 'application/json',
+        data: JSON.stringify({
+            campaign_id: currentCampaignId,
+            contact_index: currentContactIndex,
+            action: action,
+            message: message
+        }),
+        success: function(response) {
+            if (response.success) {
+                $('#messagePreviewModal').modal('hide');
+                // Show success message
+                showAlert(`Action "${action}" confirmed for contact.`, 'success');
+                // Refresh campaign status
+                checkCampaignStatus();
+            } else {
+                alert('Error: ' + response.error);
+            }
+        },
+        error: function() {
+            alert('Error processing action');
+        }
+    });
+}
+
+// Event listeners
+$(document).ready(function() {
+    $('#messageContent').on('input', updateCharCount);
+    
+    $('#sendMessageBtn').on('click', function() {
+        sendConfirmedMessage('send');
+    });
+    
+    $('#editMessageBtn').on('click', function() {
+        // Keep modal open for editing
+        $('#messageContent').focus();
+    });
+    
+    $('#skipContactBtn').on('click', function() {
+        sendConfirmedMessage('skip');
+    });
+});
+
+function showAlert(message, type) {
+    const alertHtml = `
+        <div class="alert alert-${type} alert-dismissible fade show" role="alert">
+            ${message}
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        </div>
+    `;
+    $('.container-fluid').prepend(alertHtml);
+}
+</script>

@@ -1,315 +1,479 @@
 {% extends "base.html" %}
-
 {% block title %}Outreach Campaign - LinkedIn Automation{% endblock %}
 
 {% block content %}
-<div class="page-container">
-    <div class="page-header">
-        <h1><i class="fas fa-paper-plane"></i> Outreach Campaign</h1>
-        <p>Upload your CSV file and start automated LinkedIn outreach</p>
+<div class="container mt-4">
+  <div class="card">
+    <div class="card-header d-flex align-items-center justify-content-between" style="background: linear-gradient(90deg, #0a66c2 80%, #e6f0f9); color: #fff;">
+      <h4 class="mb-0"><i class="fas fa-share-nodes me-2"></i> LinkedIn Outreach Campaign</h4>
+      <span class="badge bg-primary shadow-sm">Automated &amp; Personalized</span>
     </div>
-
-    <div class="outreach-container">
-        <div class="upload-section">
-            <h3><i class="fas fa-upload"></i> Upload Contact List</h3>
-            <form method="POST" enctype="multipart/form-data" class="upload-form">
-                <div class="form-group">
-                    <label for="csv_file">CSV File</label>
-                    <input type="file" id="csv_file" name="csv_file" accept=".csv" required>
-                    <small class="help-text">
-                        <strong>Required columns:</strong> Name, Company, Role, LinkedIn_profile<br>
-                        <strong>Optional columns:</strong> services and products_1, services and products_2, Location
-                    </small>
-                </div>
-                <div class="form-group">
-                    <label for="max_contacts">Maximum Contacts</label>
-                    <input type="number" id="max_contacts" name="max_contacts" value="20" min="1" max="50" required>
-                    <small class="help-text">Limit the number of contacts to process (safety feature)</small>
-                </div>
-                <div class="form-group">
-                    <label for="message_template">Message Template (Optional)</label>
-                    <textarea id="message_template" name="message_template" rows="4"
-                              placeholder="Leave blank to use AI-generated personalized messages for each contact"></textarea>
-                    <small class="help-text">If left blank, AI will generate personalized messages for each contact</small>
-                </div>
-                <button type="submit" class="upload-btn">
-                    <i class="fas fa-upload"></i>
-                    Upload & Process CSV
-                </button>
-            </form>
+    <div class="card-body" style="background: var(--color-background);">
+      {% if not campaign_data %}
+        <!-- Upload Section -->
+        <div id="upload-section" class="mb-4">
+          <div class="alert alert-info d-flex align-items-center mb-3" style="background:var(--color-primary-light); border:none;">
+            <i class="fas fa-info-circle fa-2x me-3" style="color: var(--color-primary);"></i>
+            <div>
+              Upload your CSV file to start an <b>automated outreach campaign</b>.<br>
+              <small>AI will generate personalized messages for each contact.</small>
+            </div>
+          </div>
+          <form method="POST" enctype="multipart/form-data" class="row g-3">
+            <div class="col-md-5">
+              <label class="form-label fw-bold">CSV File</label>
+              <input type="file" name="csv_file" class="form-control" required />
+              <small class="form-text text-muted">Required columns: Name, Company, Role, LinkedIn_profile</small>
+            </div>
+            <div class="col-md-2">
+              <label class="form-label fw-bold">Max Contacts</label>
+              <input type="number" name="max_contacts" class="form-control" min="1" max="50" value="20" />
+            </div>
+            <div class="col-md-5">
+              <label class="form-label fw-bold">Message Template (Optional)</label>
+              <textarea name="message_template" class="form-control" rows="2" placeholder="Provide a guide template or leave blank for auto-AI"></textarea>
+            </div>
+            <div class="col-12 d-flex justify-content-end mt-2">
+              <button type="submit" class="btn btn-primary btn-lg shadow-sm">
+                <i class="fas fa-cloud-upload-alt me-1"></i> Upload CSV &amp; Launch
+              </button>
+            </div>
+          </form>
+        </div>
+      {% else %}
+        <!-- Campaign Stats -->
+        <div class="row mb-4">
+          <div class="col-lg-8">
+            <div class="alert alert-success mb-0 shadow-sm d-flex align-items-center">
+              <i class="fas fa-check-circle fa-lg me-3"></i>
+              <div>
+                Loaded <b>{{ campaign_data.total_contacts }}</b> contacts.<br/>
+                Ready to process <b>{{ campaign_data.max_contacts }}</b> for this campaign.
+              </div>
+            </div>
+          </div>
+          <div class="col-lg-4 text-end">
+            <button id="start-campaign" class="btn btn-success shadow-sm btn-lg">
+              <i class="fas fa-play-circle me-2"></i>Start Campaign
+            </button>
+            <button id="stop-campaign" class="btn btn-warning shadow btn-lg" style="display:none;">
+              <i class="fas fa-stop-circle"></i>
+            </button>
+            <button class="btn btn-outline-secondary ms-2" onclick="location.reload()">New Upload</button>
+          </div>
         </div>
 
-        {% if campaign_data %}
-        <div class="campaign-section">
-            <h3><i class="fas fa-users"></i> Campaign Ready</h3>
-            <div class="campaign-info">
-                <div class="info-grid">
-                    <div class="info-item">
-                        <label>Total Contacts:</label>
-                        <span>{{ campaign_data.total_contacts }}</span>
-                    </div>
-                    <div class="info-item">
-                        <label>Max to Process:</label>
-                        <span>{{ campaign_data.max_contacts }}</span>
-                    </div>
-                    <div class="info-item">
-                        <label>Message Type:</label>
-                        <span>{% if campaign_data.message_template %}Custom Template{% else %}AI-Generated{% endif %}</span>
-                    </div>
-                </div>
-            </div>
-            <div class="campaign-actions">
-                <button onclick="startCampaign('{{ campaign_data.campaign_id }}')" class="start-btn" id="startBtn">
-                    <i class="fas fa-play"></i>
-                    Start Campaign
-                </button>
-                <button id="stopBtn" class="danger" style="display:none;margin-left:16px;">
-                    <i class="fas fa-stop-circle"></i> Stop Campaign
-                </button>
-            </div>
-            <div id="campaign-status" class="status-display"></div>
-            <div id="campaign-progress" class="progress-bar" style="display: none;">
-                <div class="progress-fill"></div>
-                <span class="progress-text">0%</span>
-            </div>
-            <div class="contacts-preview">
-                <h4><i class="fas fa-eye"></i> Contact Preview</h4>
-                <div class="contacts-table">
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>Name</th>
-                                <th>Company</th>
-                                <th>Role</th>
-                                <th>Services</th>
-                                <th>LinkedIn</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for contact in campaign_data.contacts[:5] %}
-                            <tr>
-                                <td>{{ contact.Name }}</td>
-                                <td>{{ contact.Company }}</td>
-                                <td>{{ contact.Role }}</td>
-                                <td>{{ contact.get('services and products_1', '') }}</td>
-                                <td>
-                                    <a href="{{ contact.LinkedIn_profile }}" target="_blank" class="linkedin-link">
-                                        <i class="fab fa-linkedin"></i>
-                                    </a>
-                                </td>
-                            </tr>
-                            {% endfor %}
-                            {% if campaign_data.contacts|length > 5 %}
-                            <tr>
-                                <td colspan="5" style="text-align: center; font-style: italic;">
-                                    ... and {{ campaign_data.contacts|length - 5 }} more contacts
-                                </td>
-                            </tr>
-                            {% endif %}
-                        </tbody>
-                    </table>
-                </div>
-            </div>
+        <!-- Table of Contacts Sample -->
+        <div class="card mt-3">
+          <div class="card-header fw-bold bg-white">
+            <i class="fas fa-address-book me-2"></i> Campaign Contact Sample
+          </div>
+          <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+              <thead class="table-light">
+                <tr>
+                  <th>Name</th>
+                  <th>Company</th>
+                  <th>Role</th>
+                  <th>LinkedIn Profile</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for contact in campaign_data.contacts[:5] %}
+                  <tr>
+                    <td>{{ contact.Name }}</td>
+                    <td>{{ contact.Company }}</td>
+                    <td>{{ contact.Role }}</td>
+                    <td>
+                      <a href="{{ contact.LinkedIn_profile }}" target="_blank" class="text-primary">
+                        <i class="fab fa-linkedin"></i> View
+                      </a>
+                    </td>
+                  </tr>
+                {% endfor %}
+                {% if campaign_data.contacts|length > 5 %}
+                  <tr>
+                    <td colspan="4" class="text-center text-muted">
+                      <i class="fas fa-ellipsis-h"></i> ... and {{ campaign_data.contacts|length - 5 }} more contacts
+                    </td>
+                  </tr>
+                {% endif %}
+              </tbody>
+            </table>
+          </div>
         </div>
-        {% endif %}
-    </div>
 
-    <!-- LIVE APPROVAL MODAL -->
-    <div id="previewModal" class="modal">
-        <div class="modal-content">
-            <h2>Approve Message</h2>
-            <p id="previewName" class="bold"></p>
-            <p id="previewRole"></p>
-            <p id="previewMsg" class="preview-box" style="white-space:pre-wrap;"></p>
-            <div class="modal-actions">
-                <button id="sendBtn" class="primary">Send</button>
-                <button id="skipBtn" class="secondary">Skip</button>
+        <!-- Campaign Status and Progress -->
+        <div id="campaign-status" class="mt-4" style="display: none;">
+          <div class="card bg-light shadow">
+            <div class="card-body">
+              <div class="d-flex align-items-center mb-4 gap-2">
+                <h6 class="card-title mb-0"><i class="fas fa-chart-line me-2"></i> Campaign Progress</h6>
+                <span id="status-badge" class="badge bg-primary">Initializing</span>
+              </div>
+              <div class="row text-center">
+                <div class="col">
+                  <div class="h4 text-success mb-0" id="successful-count">0</div>
+                  <small class="text-muted">Successful</small>
+                </div>
+                <div class="col">
+                  <div class="h4 text-danger mb-0" id="failed-count">0</div>
+                  <small class="text-muted">Failed</small>
+                </div>
+                <div class="col">
+                  <div class="h4 text-warning mb-0" id="skipped-count">0</div>
+                  <small class="text-muted">Skipped</small>
+                </div>
+                <div class="col">
+                  <div class="h4 text-info mb-0" id="already-messaged-count">0</div>
+                  <small class="text-muted">Already Messaged</small>
+                </div>
+              </div>
+              <div class="my-3">
+                <div class="progress" style="height: 1.2rem;">
+                  <div class="progress-bar bg-primary" id="progress-bar" style="width: 0%"></div>
+                </div>
+                <small class="text-muted float-end mt-1" style="font-size:0.95em;">
+                  <span id="progress-current">0</span> /
+                  <span id="progress-total">{{ campaign_data.max_contacts if campaign_data else 0 }}</span> processed
+                </small>
+              </div>
+              <div id="current-activity" class="alert alert-info py-2 px-3 mt-3 mb-0" style="display:none;">
+                <i class="fas fa-spinner fa-spin"></i>
+                <span id="activity-text">Processing...</span>
+              </div>
             </div>
+          </div>
         </div>
+
+        <!-- Stylish Modals and Toasts would be injected by JS -->
+        <!-- (Modal definition is included further down) -->
+      {% endif %}
     </div>
-    <!-- Results Modal -->
-    <div id="resultsModal" class="modal">
-        <div class="modal-content">
-            <span class="close">&times;</span>
-            <h2>Campaign Results</h2>
-            <div id="resultsContent"></div>
+  </div>
+</div>
+
+<!-- Message Preview Modal (Full Featured) -->
+<div class="modal fade" id="messagePreviewModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header" style="background:var(--color-primary); color:#fff;">
+        <h5 class="modal-title"><i class="fas fa-eye"></i> Message Preview</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body bg-light">
+        <div class="card mb-3 shadow-sm">
+          <div class="card-header bg-white fw-bold">Contact Information</div>
+          <div class="card-body">
+            <div class="row mb-2">
+              <div class="col-md-4"><span class="fw-semibold">Name:</span> <span id="preview-name"></span></div>
+              <div class="col-md-4"><span class="fw-semibold">Company:</span> <span id="preview-company"></span></div>
+              <div class="col-md-4"><span class="fw-semibold">Role:</span> <span id="preview-role"></span></div>
+            </div>
+            <div class="mt-2"><span class="fw-semibold">LinkedIn Profile:</span>
+              <a href="#" id="preview-linkedin" target="_blank" class="text-primary">
+                <i class="fab fa-linkedin"></i> View Profile
+              </a>
+            </div>
+          </div>
         </div>
+        <div class="card shadow-sm">
+          <div class="card-header bg-white fw-bold">Generated Message</div>
+          <div class="card-body">
+            <textarea class="form-control" id="preview-message" rows="4"></textarea>
+            <small class="form-text mt-1"><span id="message-length">0</span> / 280 characters</small>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer bg-light">
+        <button type="button" class="btn btn-success" id="confirm-send">
+          <i class="fas fa-paper-plane"></i> Send Message
+        </button>
+        <button type="button" class="btn btn-secondary" id="confirm-skip">
+          <i class="fas fa-forward"></i> Skip Contact
+        </button>
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+      </div>
     </div>
+  </div>
 </div>
 
 <script>
-let campaignId = "{{ campaign_data.campaign_id if campaign_data else '' }}";
-let statusInterval = null;
-let previewInterval = null;
+let campaignId = '{{ campaign_data.campaign_id if campaign_data else "" }}';
+let campaignRunning = false;
+let pollInterval = null;
 
-// ----------- Start/Stop campaign flow --------------
-function startCampaign(id) {
-    campaignId = id;
-    document.getElementById("startBtn").disabled=true;
+// Start Campaign
+document.getElementById('start-campaign')?.addEventListener('click', function() {
+    if (!campaignId) {
+        alert('No campaign loaded!');
+        return;
+    }
+    
+    startCampaign();
+});
+
+// Stop Campaign  
+document.getElementById('stop-campaign')?.addEventListener('click', function() {
+    stopCampaign();
+});
+
+function startCampaign() {
     fetch('/start_campaign', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' }
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+            campaign_id: campaignId
+        })
     })
     .then(response => response.json())
     .then(data => {
         if (data.success) {
-            document.getElementById('campaign-status').innerHTML =
-                '<i class="fas fa-spinner fa-spin"></i> Campaign started...';
-            document.getElementById('campaign-progress').style.display = 'block';
-            document.getElementById('stopBtn').style.display = 'inline-block';
-            pollCampaign();
+            campaignRunning = true;
+            document.getElementById('start-campaign').style.display = 'none';
+            document.getElementById('stop-campaign').style.display = 'inline-block';
+            document.getElementById('campaign-status').style.display = 'block';
+            
+            // Start polling for updates
+            pollInterval = setInterval(pollCampaignStatus, 2000);
+            
+            showAlert('Campaign started successfully!', 'success');
         } else {
-            alert('Error: ' + data.error);
+            showAlert('Failed to start campaign: ' + (data.error || 'Unknown error'), 'danger');
         }
     })
     .catch(error => {
         console.error('Error:', error);
-        alert('Error starting campaign');
+        showAlert('Error starting campaign', 'danger');
     });
 }
 
-document.getElementById("stopBtn").onclick = function() {
-    if(confirm("Do you want to stop this campaign now?")){
-        fetch('/stop_campaign', {
-            method: 'POST',
-            headers: {'Content-Type':'application/json'},
-            body: JSON.stringify({campaign_id: campaignId})
-        });
-    }
-};
-
-// ------ Modal for manual approval ------
-const modal    = document.getElementById('previewModal');
-const sendBtn  = document.getElementById('sendBtn');
-const skipBtn  = document.getElementById('skipBtn');
-
-sendBtn.onclick = function(){
-    modal.style.display = 'none';
-    fetch('/contact_action', {
+function stopCampaign() {
+    fetch('/stop_campaign', {
         method: 'POST',
-        headers: {'Content-Type':'application/json'},
-        body: JSON.stringify({campaign_id: campaignId, action:'send'})
-    });
-}
-skipBtn.onclick = function(){
-    modal.style.display = 'none';
-    fetch('/contact_action', {
-        method: 'POST',
-        headers: {'Content-Type':'application/json'},
-        body: JSON.stringify({campaign_id: campaignId, action:'skip'})
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+            campaign_id: campaignId
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            campaignRunning = false;
+            clearInterval(pollInterval);
+            
+            document.getElementById('start-campaign').style.display = 'inline-block';
+            document.getElementById('stop-campaign').style.display = 'none';
+            
+            showAlert('Campaign stopped', 'warning');
+        }
+    })
+    .catch(error => {
+        console.error('Error stopping campaign:', error);
     });
 }
 
-// Poll campaign status and show approval modal if needed
-function pollCampaign() {
-    statusInterval = setInterval(function() {
-        fetch('/campaign_status')
+// 🔥 KEY FIX: Poll Campaign Status to Check for Message Previews
+function pollCampaignStatus() {
+    if (!campaignId || !campaignRunning) return;
+    
+    fetch(`/campaign_results/${campaignId}`)
         .then(response => response.json())
         .then(data => {
-            const statusEl = document.getElementById('campaign-status');
-            const progressEl = document.querySelector('.progress-fill');
-            const progressText = document.querySelector('.progress-text');
-            if (data.running) {
-                statusEl.innerHTML = `<i class="fas fa-spinner fa-spin"></i> ${data.message} (${data.progress}/${data.total})`;
-                document.getElementById('stopBtn').style.display = 'inline-block';
-                if (data.total > 0) {
-                    const percentage = Math.round((data.progress / data.total) * 100);
-                    progressEl.style.width = percentage + '%';
-                    progressText.textContent = percentage + '%';
+            // Update progress display
+            updateProgressDisplay(data);
+            
+            // 🚀 CHECK FOR MESSAGE PREVIEW REQUEST
+            if (data.awaiting_confirmation && data.current_contact_preview) {
+                console.log('Message preview requested:', data.current_contact_preview);
+                showMessagePreview(data.current_contact_preview);
+            }
+            
+            // Check if campaign completed
+            if (data.status === 'completed' || data.status === 'failed') {
+                campaignRunning = false;
+                clearInterval(pollInterval);
+                document.getElementById('start-campaign').style.display = 'inline-block';
+                document.getElementById('stop-campaign').style.display = 'none';
+                
+                if (data.status === 'completed') {
+                    showAlert('Campaign completed successfully!', 'success');
+                } else {
+                    showAlert('Campaign failed: ' + (data.error || 'Unknown error'), 'danger');
                 }
-                if(data.awaiting && data.current){
-                    // Show the modal with contact info/message for approval
-                    document.getElementById('previewName').textContent = data.current.Name + " – " + data.current.Company;
-                    document.getElementById('previewRole').textContent = data.current.Role;
-                    document.getElementById('previewMsg').textContent  = data.current.message;
-                    modal.style.display = 'block';
-                }
-            } else {
-                statusEl.innerHTML = `<i class="fas fa-check-circle"></i> ${data.message}`;
-                document.getElementById('stopBtn').style.display = 'none';
-                clearInterval(statusInterval);
-                if (campaignId) showResults(campaignId);
-                document.getElementById("startBtn").disabled=false;
             }
         })
         .catch(error => {
-            console.error('Error:', error);
-            clearInterval(statusInterval);
-            if (modal) modal.style.display = 'none';
+            console.error('Error polling campaign status:', error);
         });
-    }, 1200);
 }
 
-function showResults(id) {
-    fetch(`/campaign_results/${id}`)
+function updateProgressDisplay(data) {
+    // Update counts
+    document.getElementById('successful-count').textContent = data.successful || 0;
+    document.getElementById('failed-count').textContent = data.failed || 0;
+    document.getElementById('skipped-count').textContent = data.skipped || 0;
+    document.getElementById('already-messaged-count').textContent = data.already_messaged || 0;
+    
+    // Update progress bar
+    const current = data.progress || 0;
+    const total = data.total || 1;
+    const percentage = Math.round((current / total) * 100);
+    
+    document.getElementById('progress-current').textContent = current;
+    document.getElementById('progress-total').textContent = total;
+    document.getElementById('progress-bar').style.width = percentage + '%';
+    
+    // Update status badge
+    const statusBadge = document.getElementById('status-badge');
+    const currentActivity = document.getElementById('current-activity');
+    const activityText = document.getElementById('activity-text');
+    
+    if (data.status) {
+        statusBadge.textContent = data.status.charAt(0).toUpperCase() + data.status.slice(1);
+        statusBadge.className = 'badge ms-2 ' + getStatusBadgeClass(data.status);
+    }
+    
+    if (data.awaiting_confirmation) {
+        currentActivity.style.display = 'block';
+        activityText.textContent = '⏳ Waiting for user confirmation...';
+    } else if (data.status === 'running') {
+        currentActivity.style.display = 'block';
+        activityText.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Processing contacts...';
+    } else {
+        currentActivity.style.display = 'none';
+    }
+}
+
+// 🔥 KEY FIX: Show Message Preview Modal
+function showMessagePreview(previewData) {
+    const contact = previewData.contact;
+    const message = previewData.message;
+    
+    // Populate contact information
+    document.getElementById('preview-name').textContent = contact.Name || '-';
+    document.getElementById('preview-company').textContent = contact.Company || '-';
+    document.getElementById('preview-role').textContent = contact.Role || '-';
+    document.getElementById('preview-linkedin').href = contact.LinkedIn_profile || '#';
+    
+    // Populate message
+    const messageTextarea = document.getElementById('preview-message');
+    messageTextarea.value = message || '';
+    updateMessageLength();
+    
+    // Store contact index for actions
+    document.getElementById('messagePreviewModal').setAttribute('data-contact-index', previewData.contact_index || 0);
+    
+    // Show modal
+    const modal = new bootstrap.Modal(document.getElementById('messagePreviewModal'));
+    modal.show();
+}
+
+// Message length counter
+document.getElementById('preview-message')?.addEventListener('input', updateMessageLength);
+
+function updateMessageLength() {
+    const message = document.getElementById('preview-message').value;
+    const length = message.length;
+    document.getElementById('message-length').textContent = length;
+    
+    // Change color based on length
+    const lengthSpan = document.getElementById('message-length');
+    if (length > 280) {
+        lengthSpan.className = 'text-danger';
+    } else if (length > 250) {
+        lengthSpan.className = 'text-warning';
+    } else {
+        lengthSpan.className = 'text-muted';
+    }
+}
+
+// 🔥 KEY FIX: Handle User Actions (Send/Skip)
+document.getElementById('confirm-send')?.addEventListener('click', function() {
+    const message = document.getElementById('preview-message').value;
+    const contactIndex = document.getElementById('messagePreviewModal').getAttribute('data-contact-index');
+    
+    if (message.length > 280) {
+        alert('Message is too long! Please keep it under 280 characters.');
+        return;
+    }
+    
+    sendMessageAction('send', message, contactIndex);
+});
+
+document.getElementById('confirm-skip')?.addEventListener('click', function() {
+    const contactIndex = document.getElementById('messagePreviewModal').getAttribute('data-contact-index');
+    sendMessageAction('skip', '', contactIndex);
+});
+
+function sendMessageAction(action, message, contactIndex) {
+    fetch('/confirm_message_action', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+            campaign_id: campaignId,
+            action: action,
+            message: message,
+            contact_index: parseInt(contactIndex)
+        })
+    })
     .then(response => response.json())
     .then(data => {
         if (data.success) {
-            let resultsHTML = `
-                <div class="results-summary">
-                    <h3>Campaign Summary</h3>
-                    <div class="stats-grid">
-                        <div class="stat-item success">
-                            <span class="stat-number">${data.successful_contacts}</span>
-                            <span class="stat-label">Successful</span>
-                        </div>
-                        <div class="stat-item failed">
-                            <span class="stat-number">${data.failed_contacts}</span>
-                            <span class="stat-label">Failed</span>
-                        </div>
-                        <div class="stat-item skipped">
-                            <span class="stat-number">${data.skipped_contacts}</span>
-                            <span class="stat-label">Skipped</span>
-                        </div>
-                    </div>
-                </div>
-            `;
-            if (data.contacts_processed && data.contacts_processed.length > 0) {
-                resultsHTML += `
-                    <div class="contacts-processed">
-                        <h4>Processed Contacts</h4>
-                        <div class="contacts-list">
-                `;
-                data.contacts_processed.forEach(contact => {
-                    const statusIcon = contact.success ?
-                        '<i class="fas fa-check-circle text-success"></i>' :
-                        '<i class="fas fa-times-circle text-error"></i>';
-                    resultsHTML += `
-                        <div class="contact-result">
-                            ${statusIcon}
-                            <span class="contact-name">${contact.name}</span>
-                            <span class="contact-company">${contact.company}</span>
-                            <span class="contact-method">${contact.method || 'N/A'}</span>
-                        </div>
-                    `;
-                });
-                resultsHTML += '</div></div>';
+            // Close modal
+            bootstrap.Modal.getInstance(document.getElementById('messagePreviewModal')).hide();
+            
+            if (action === 'send') {
+                showAlert('Message approved for sending!', 'success');
+            } else {
+                showAlert('Contact skipped', 'warning');
             }
-            document.getElementById('resultsContent').innerHTML = resultsHTML;
-            document.getElementById('resultsModal').style.display = 'block';
+        } else {
+            showAlert('Error processing action: ' + (data.error || 'Unknown error'), 'danger');
         }
     })
     .catch(error => {
-        console.error('Error:', error);
+        console.error('Error sending action:', error);
+        showAlert('Error processing action', 'danger');
     });
 }
-// Modal close functionality for results
-document.querySelector('.close').onclick = function() {
-    document.getElementById('resultsModal').style.display = 'none';
+
+function getStatusBadgeClass(status) {
+    switch (status) {
+        case 'running': return 'bg-primary';
+        case 'completed': return 'bg-success';
+        case 'failed': return 'bg-danger';
+        case 'stopped': return 'bg-warning';
+        case 'awaiting_user_action': return 'bg-info';
+        default: return 'bg-secondary';
+    }
 }
-window.onclick = function(event) {
-    const modal1 = document.getElementById('resultsModal');
-    const modal2 = document.getElementById('previewModal');
-    if (event.target == modal1) modal1.style.display = 'none';
-    if (event.target == modal2) modal2.style.display = 'none';
+
+function showAlert(message, type) {
+    // Create and show Bootstrap alert
+    const alertDiv = document.createElement('div');
+    alertDiv.className = `alert alert-${type} alert-dismissible fade show`;
+    alertDiv.innerHTML = `
+        ${message}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    `;
+    
+    // Insert at top of card body
+    const cardBody = document.querySelector('.card-body');
+    cardBody.insertBefore(alertDiv, cardBody.firstChild);
+    
+    // Auto dismiss after 5 seconds
+    setTimeout(() => {
+        if (alertDiv.parentNode) {
+            alertDiv.remove();
+        }
+    }, 5000);
 }
 </script>
-<style>
-/* For modal and stop button */
-#previewModal .modal-content { max-width: 500px;}
-.preview-box    { background:#f8f9fa; padding:1rem; border-radius:6px; margin:1rem 0;}
-.modal-actions  { display:flex; gap:1rem; justify-content:flex-end }
-button.danger   { background:#dc3545; color:#fff; padding:.6rem 1.4rem; border-radius:7px;}
-</style>
 {% endblock %}
-
