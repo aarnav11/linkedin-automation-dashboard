@@ -131,20 +131,43 @@ class LocalClientManager:
             return {'success': False, 'error': str(e)}
     
     def send_search_connect_request(self, user_id, search_params):
+        """Send search-and-connect request to local client"""
         client_url = self.get_client_url(user_id)
-        user       = User.query.get(user_id)
-
-        payload = {
-            "search_id":  str(uuid.uuid4()),
-            "user_config": {
-                "linkedin_email":     user.linkedin_email,
-                "linkedin_password":  user.get_linkedin_password(),
-                "gemini_api_key":     user.gemini_api_key
-            },
-            "search_params": search_params
-        }
-        return requests.post(f"{client_url}/start_search_connect",
-                            json=payload, timeout=10).json()
+        
+        try:
+            user = User.query.get(user_id)
+            if not user:
+                raise Exception("User not found")
+                
+            search_id = str(uuid.uuid4())
+            payload = {
+                "search_id": search_id,
+                "user_config": {
+                    "linkedin_email": user.linkedin_email,
+                    "linkedin_password": user.get_linkedin_password(),
+                    "gemini_api_key": user.gemini_api_key
+                },
+                "search_params": {
+                    "keywords": search_params.get('keywords', ''),
+                    "max_invites": int(search_params.get('max_invites', 10)),
+                    "location": search_params.get('location', ''),
+                    "search_type": "search_and_connect"
+                }
+            }
+            
+            response = requests.post(f"{client_url}/start_search_connect", 
+                                json=payload, timeout=15)
+            
+            if response.status_code == 200:
+                result = response.json()
+                result['search_id'] = search_id  # Ensure search_id is in response
+                return result
+            else:
+                return {'success': False, 'error': f'HTTP {response.status_code}'}
+                
+        except Exception as e:
+            logger.error(f"❌ Error sending search-connect request: {e}")
+            return {'success': False, 'error': str(e)}
 
     def send_keyword_search_request(self, user_id, search_params):
         """Send keyword search request to local client"""
@@ -756,7 +779,7 @@ def keyword_search():
                 result = client_manager.send_search_connect_request(user.id, search_params)
             else:
                 result = client_manager.send_keyword_search_request(user.id, search_params)
-    
+
             if result.get('success'):
                 flash('Keyword search started on local client!', 'success')
                 session['current_search'] = {
