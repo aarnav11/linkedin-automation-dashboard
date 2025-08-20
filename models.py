@@ -21,9 +21,9 @@ class User(db.Model):
     linkedin_password = db.Column(db.String(255), nullable=True)
     gemini_api_key = db.Column(db.String(255), nullable=True)
     
-    #def set_password(self, password):
-        #"""Hash and set password"""
-        #self.password_hash = bcrypt.generate_password_hash(password).decode('utf-8')
+    def set_password(self, password):
+        """Hash and set password"""
+        self.password_hash = bcrypt.generate_password_hash(password).decode('utf-8')
     
     def check_password(self, password):
         """Check if password matches hash"""

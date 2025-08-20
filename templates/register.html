@@ -14,6 +14,14 @@
       {% endif %}
       <form action="" method="post" autocomplete="off">
         <div class="form-group mb-3">
+          <label for="first_name" class="fw-bold">First Name</label>
+          <input class="form-control" type="text" id="first_name" name="first_name" placeholder="Your first name" required>
+        </div>
+        <div class="form-group mb-3">
+          <label for="last_name" class="fw-bold">Last Name</label>
+          <input class="form-control" type="text" id="last_name" name="last_name" placeholder="Your last name" required>
+        </div>
+        <div class="form-group mb-3">
           <label for="email" class="fw-bold">Email address</label>
           <input class="form-control" type="email" id="email" name="email" placeholder="you@email.com" required>
         </div>
@@ -22,9 +30,8 @@
           <input class="form-control" type="password" id="password" name="password" placeholder="Create a password" required>
         </div>
         <div class="form-group mb-3">
-          <label for="gemini_api_key" class="fw-bold">Gemini API Key</label>
-          <input class="form-control" type="text" id="gemini_api_key" name="gemini_api_key" placeholder="Enter your Gemini API key" required>
-          <small class="form-text text-muted">You need this to enable AI-powered messaging. <a href="https://ai.google.dev/gemini-api/docs/api-key" target="_blank" style="color:#0a66c2;">Get one here</a>.</small>
+          <label for="confirm_password" class="fw-bold">Confirm Password</label>
+          <input class="form-control" type="password" id="confirm_password" name="confirm_password" placeholder="Confirm password" required>
         </div>
         <button type="submit" class="btn btn-primary btn-lg w-100">
           <i class="fas fa-user-plus me-1"></i> Register

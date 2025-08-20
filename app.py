@@ -1002,9 +1002,12 @@ def register_client_bot():
 
         # Test the provided client URL to ensure it's reachable
         try:
-            response = requests.get(f"{client_url}/health", timeout=10)
-            if response.status_code != 200:
-                return jsonify({'success': False, 'error': 'Client is not responding or unhealthy.'}), 400
+            logger.info(f"🧪 Testing connection to {client_url}...")
+            response = requests.get(f"{client_url}/health", timeout=30)  # Increased timeout to 30 seconds
+            if response.status_code == 200:
+                logger.info("✅ Client connection test successful")
+            else:
+                logger.warning(f"⚠️ Client responded with status {response.status_code}")
         except requests.exceptions.RequestException as e:
             return jsonify({'success': False, 'error': f'Cannot connect to client: {e}'}), 400
 
