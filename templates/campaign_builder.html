@@ -1,0 +1,150 @@
+{% extends "base.html" %}
+
+{% block title %}Campaign Builder{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="card shadow-sm">
+        <div class="card-header py-3 d-flex flex-row align-items-center justify-content-between">
+            <h5 class="m-0 font-weight-bold text-primary"><i class="fas fa-users-gear me-2"></i>Campaign Builder</h5>
+            <span id="status-badge" class="badge bg-secondary rounded-pill">{{ collection_data.status }}</span>
+        </div>
+        <div class="card-body">
+            <div id="progress-container" class="mb-4" {% if collection_data.status in ['completed', 'failed'] %}style="display: none;"{% endif %}>
+                <p class="mb-1"><strong>Collecting profiles from Sales Navigator...</strong></p>
+                <div class="progress" style="height: 1.5rem;">
+                    <div id="progress-bar" class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%;" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">0%</div>
+                </div>
+                <p class="mt-2 text-muted" id="progress-text">Collected 0 / {{ collection_data.total }} profiles.</p>
+            </div>
+            
+            <div id="results-container">
+                <form id="campaign-form" action="{{ url_for('create_campaign_from_selection') }}" method="POST">
+                    <input type="hidden" name="collection_id" value="{{ collection_id }}">
+                    
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <button type="submit" id="create-campaign-btn" class="btn btn-success" disabled>
+                            <i class="fas fa-plus-circle me-2"></i>Create Campaign with Selected
+                        </button>
+                        <span id="selected-count" class="ms-3 text-muted fw-bold">0 profiles selected</span>
+                    </div>
+
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle">
+                            <thead class="table-light">
+                                <tr>
+                                    <th style="width: 5%;"><input class="form-check-input" type="checkbox" id="select-all"></th>
+                                    <th>Name</th>
+                                    <th>Headline / Role</th>
+                                    <th>Company</th>
+                                    <th>Profile</th>
+                                </tr>
+                            </thead>
+                            <tbody id="profiles-tbody">
+                                </tbody>
+                        </table>
+                    </div>
+                     <div class="mt-3 text-center" id="no-profiles-message" style="display: none;">
+                        <p class="text-muted">No profiles collected yet. The process is running in the background.</p>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const collectionId = "{{ collection_id }}";
+    const totalProfilesToCollect = {{ collection_data.total }};
+    const progressBar = document.getElementById('progress-bar');
+    const progressText = document.getElementById('progress-text');
+    const statusBadge = document.getElementById('status-badge');
+    const tbody = document.getElementById('profiles-tbody');
+    const createCampaignBtn = document.getElementById('create-campaign-btn');
+    const selectAllCheckbox = document.getElementById('select-all');
+    const selectedCountSpan = document.getElementById('selected-count');
+    const noProfilesMessage = document.getElementById('no-profiles-message');
+    
+    function updateSelectedCount() {
+        const selectedCheckboxes = document.querySelectorAll('.profile-checkbox:checked').length;
+        selectedCountSpan.textContent = `${selectedCheckboxes} profile${selectedCheckboxes !== 1 ? 's' : ''} selected`;
+        createCampaignBtn.disabled = selectedCheckboxes === 0;
+    }
+
+    tbody.addEventListener('change', (e) => {
+        if (e.target.classList.contains('profile-checkbox')) {
+            updateSelectedCount();
+        }
+    });
+
+    selectAllCheckbox.addEventListener('change', function() {
+        document.querySelectorAll('.profile-checkbox').forEach(checkbox => {
+            checkbox.checked = this.checked;
+        });
+        updateSelectedCount();
+    });
+
+    function updateUI(data) {
+        const status = data.status || 'unknown';
+        const progress = data.progress || 0;
+        const percentage = totalProfilesToCollect > 0 ? Math.min(100, (progress / totalProfilesToCollect * 100)).toFixed(0) : 0;
+
+        // Update status and progress bar
+        statusBadge.textContent = status.replace('_', ' ');
+        progressBar.style.width = percentage + '%';
+        progressBar.setAttribute('aria-valuenow', percentage);
+        progressBar.textContent = percentage + '%';
+        progressText.textContent = `Collected ${progress} / ${totalProfilesToCollect} profiles.`;
+
+        // Update table with new profiles
+        const newProfiles = data.profiles || [];
+        if (newProfiles.length > 0) {
+            noProfilesMessage.style.display = 'none';
+        }
+        
+        tbody.innerHTML = newProfiles.map((profile, index) => `
+            <tr>
+                <td><input class="form-check-input profile-checkbox" type="checkbox" name="profile_indices" value="${index}"></td>
+                <td>${profile.name || 'N/A'}</td>
+                <td>${profile.headline || 'N/A'}</td>
+                <td>${profile.company || 'N/A'}</td>
+                <td><a href="${profile.profile_url}" target="_blank" class="btn btn-sm btn-outline-primary"><i class="fab fa-linkedin"></i> View</a></td>
+            </tr>
+        `).join('');
+
+        // Handle final states
+        if (status === 'completed' || status === 'failed') {
+            document.getElementById('progress-container').style.display = 'none';
+            statusBadge.classList.remove('bg-secondary', 'bg-info');
+            statusBadge.classList.add(status === 'completed' ? 'bg-success' : 'bg-danger');
+            clearInterval(pollingInterval);
+            if (newProfiles.length === 0) {
+                noProfilesMessage.innerHTML = '<p class="text-danger">Collection finished but no profiles were found. Please check the Sales Navigator URL and try again.</p>';
+                noProfilesMessage.style.display = 'block';
+            }
+        }
+    }
+    
+    updateUI({{ collection_data | tojson }});
+
+    const pollingInterval = setInterval(() => {
+        fetch(`/collection_status/${collectionId}`)
+            .then(response => response.json())
+            .then(data => {
+                if (data && data.status !== 'not_found') {
+                    updateUI(data);
+                } else {
+                    clearInterval(pollingInterval);
+                }
+            })
+            .catch(error => {
+                console.error('Error fetching collection status:', error);
+                clearInterval(pollingInterval);
+            });
+    }, 3000);
+});
+</script>
+{% endblock %}

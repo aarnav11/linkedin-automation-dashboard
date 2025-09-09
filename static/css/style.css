@@ -431,3 +431,50 @@ html.dark .alert-warning {
     font-weight: 600;
     background-color: var(--color-background);
 }
+/* Add these styles to the end of style.css */
+
+/* Tab Styles for Outreach Page */
+.nav-tabs {
+    border-bottom: 2px solid var(--color-border);
+}
+
+.nav-tabs .nav-link {
+    border: none;
+    border-bottom: 2px solid transparent;
+    color: var(--color-text-secondary);
+    margin-bottom: -2px;
+    font-weight: 500;
+    transition: all 0.2s ease-in-out;
+}
+
+.nav-tabs .nav-link:hover {
+    border-bottom-color: var(--color-primary-light);
+    color: var(--color-text);
+}
+
+.nav-tabs .nav-link.active, 
+.nav-tabs .nav-item.show .nav-link {
+    color: var(--color-primary);
+    background-color: transparent;
+    border-color: transparent;
+    border-bottom-color: var(--color-primary);
+    font-weight: 600;
+}
+
+.tab-content {
+    border: 1px solid var(--color-border);
+    border-top: none;
+    border-radius: 0 0 var(--border-radius) var(--border-radius);
+    background-color: var(--color-surface);
+}
+
+/* Enhancements for Campaign Builder */
+#profiles-tbody tr:hover {
+    background-color: var(--color-primary-light);
+}
+
+.form-check-input {
+    width: 1.25em;
+    height: 1.25em;
+    cursor: pointer;
+}

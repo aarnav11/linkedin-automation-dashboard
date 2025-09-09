@@ -29,6 +29,7 @@ logger = logging.getLogger(__name__)
 campaign_results = {}
 search_results_cache = {}
 inbox_results = {}
+collection_results_cache = {}
 automation_status = {
     'running': False,
     'awaiting': False,   # waiting for user decision on current contact
@@ -127,7 +128,25 @@ class LocalClientManager:
         except Exception as e:
             logger.error(f"❌ Error sending campaign request: {e}")
             return {'success': False, 'error': str(e)}
-    
+    def send_collection_request(self, user_id, collection_params):
+        """Send Sales Navigator profile collection request to local client"""
+        client_url = self.get_client_url(user_id)
+        try:
+            user = User.objects.get(id=user_id)
+            payload = {
+                'collection_id': collection_params.get('collection_id'),
+                'user_config': {
+                    'linkedin_email': user.linkedin_email,
+                    'linkedin_password': user.get_linkedin_password(),
+                    'gemini_api_key': user.gemini_api_key
+                },
+                'collection_params': collection_params
+            }
+            response = requests.post(f"{client_url}/collect_profiles", json=payload, timeout=15)
+            return response.json()
+        except Exception as e:
+            logger.error(f"❌ Error sending collection request: {e}")
+            return {'success': False, 'error': str(e)}
     def send_keyword_search_request(self, user_id, search_params):
         """Send keyword search request to local client"""
         client_url = self.get_client_url(user_id)
@@ -481,6 +500,132 @@ def outreach():
             return render_template('outreach.html', user=user)
     
     return render_template('outreach.html', user=user)
+@app.route('/start_collection', methods=['POST'])
+@login_required
+@linkedin_setup_required
+def start_collection():
+    user = get_current_user()
+    try:
+        sales_nav_url = request.form.get('sales_nav_url', '').strip()
+        max_profiles = int(request.form.get('max_profiles', 25))
+
+        if not sales_nav_url or "linkedin.com/sales/search/" not in sales_nav_url:
+            flash('Please provide a valid LinkedIn Sales Navigator search URL.', 'error')
+            return redirect(url_for('outreach'))
+
+        if not client_manager.is_client_available(str(user.id)):
+            flash('Local client is not running. Please start it to collect profiles.', 'error')
+            return redirect(url_for('client_setup'))
+
+        collection_id = str(uuid.uuid4())
+        collection_params = {
+            'collection_id': collection_id,
+            'sales_nav_url': sales_nav_url,
+            'max_profiles': max_profiles
+        }
+        
+        # Initialize cache for this collection
+        collection_results_cache[collection_id] = {
+            "status": "starting",
+            "progress": 0,
+            "total": max_profiles,
+            "profiles": [],
+            "start_time": datetime.now().isoformat()
+        }
+
+        result = client_manager.send_collection_request(str(user.id), collection_params)
+
+        if result.get('success'):
+            flash(f'Profile collection started for up to {max_profiles} profiles. You will be redirected to the results page.', 'success')
+            session['current_collection_id'] = collection_id
+            return redirect(url_for('campaign_builder', collection_id=collection_id))
+        else:
+            flash(f"Failed to start collection: {result.get('error', 'Unknown error')}", 'error')
+            collection_results_cache.pop(collection_id, None) # Clean up
+            return redirect(url_for('outreach'))
+
+    except Exception as e:
+        flash(f'Error starting collection: {e}', 'error')
+        return redirect(url_for('outreach'))
+
+# NEW: Route to display collected profiles and build a campaign
+@app.route('/campaign_builder/<collection_id>')
+@login_required
+def campaign_builder(collection_id):
+    user = get_current_user()
+    collection_data = collection_results_cache.get(collection_id)
+    if not collection_data:
+        flash('Collection data not found or expired.', 'error')
+        return redirect(url_for('outreach'))
+
+    return render_template('campaign_builder.html',
+                           user=user,
+                           collection_id=collection_id,
+                           collection_data=collection_data)
+
+# NEW: API endpoint to get collection status
+@app.route('/collection_status/<collection_id>')
+@login_required
+def collection_status(collection_id):
+    return jsonify(collection_results_cache.get(collection_id, {'status': 'not_found'}))
+
+
+# NEW: Route to create a campaign from selected profiles
+@app.route('/create_campaign_from_selection', methods=['POST'])
+@login_required
+def create_campaign_from_selection():
+    try:
+        collection_id = request.form.get('collection_id')
+        selected_indices = request.form.getlist('profile_indices') # Checkbox values are indices
+
+        if not collection_id or not selected_indices:
+            flash('No profiles were selected to create the campaign.', 'warning')
+            return redirect(url_for('campaign_builder', collection_id=collection_id))
+
+        original_collection = collection_results_cache.get(collection_id)
+        if not original_collection:
+            flash('Collection data has expired. Please start a new collection.', 'error')
+            return redirect(url_for('outreach'))
+
+        # Build the contact list for the campaign
+        selected_contacts = []
+        all_profiles = original_collection.get('profiles', [])
+        for index_str in selected_indices:
+            try:
+                index = int(index_str)
+                if 0 <= index < len(all_profiles):
+                    # Map scraped data to the required CSV format
+                    profile = all_profiles[index]
+                    contact = {
+                        'Name': profile.get('name', 'N/A'),
+                        'LinkedIn_profile': profile.get('profile_url', ''),
+                        'Company': profile.get('company', 'N/A'),
+                        'Role': profile.get('headline', 'N/A')
+                    }
+                    selected_contacts.append(contact)
+            except ValueError:
+                continue
+
+        if not selected_contacts:
+            flash('Could not process selected profiles. Please try again.', 'error')
+            return redirect(url_for('campaign_builder', collection_id=collection_id))
+
+        # Create and store the new campaign in the session, just like a CSV upload
+        campaign_data = {
+            'message_template': '', # User will define this on the outreach page
+            'max_contacts': len(selected_contacts),
+            'total_contacts': len(selected_contacts),
+            'contacts': selected_contacts,
+            'campaign_id': str(uuid.uuid4())
+        }
+        session['current_campaign'] = campaign_data
+        
+        flash(f'Successfully created a new campaign with {len(selected_contacts)} selected profiles!', 'success')
+        return redirect(url_for('outreach'))
+
+    except Exception as e:
+        flash(f'Error creating campaign: {e}', 'error')
+        return redirect(url_for('outreach'))
 
 @app.route('/start_campaign', methods=['POST'])
 @login_required
