@@ -528,9 +528,13 @@ def start_campaign():
         # Create the task and save it to the database
         task = Task(
             user=user,
-            task_type='outreach_campaign',
+            task_type='start_campaign',
             params={
                 'campaign_id': campaign_data['campaign_id'],
+                'user_config': {
+                    'linkedin_email': user.linkedin_email,
+                    'linkedin_password': user.linkedin_password,
+                    'gemini_api_key': user.gemini_api_key},
                 'campaign_data': campaign_data
             },
             status='queued'
@@ -639,7 +643,17 @@ def keyword_search():
             task = Task(
                 user=user,
                 task_type='keyword_search',
-                params=task_params,
+                params={
+                    'search_id': str(uuid.uuid4()),
+                    'user_config': {
+                        'linkedin_email': user.linkedin_email,
+                        'linkedin_password': user.linkedin_password,
+                        'gemini_api_key': user.gemini_api_key
+                    },
+                    'search_params': {'keywords': search_keywords,
+                                       'max_invites': max_invites,
+                                       'search_type': 'search_and_connect'}
+                },
                 status='queued'
             )
             task.save()
