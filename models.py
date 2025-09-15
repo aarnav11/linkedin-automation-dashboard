@@ -1,6 +1,8 @@
-from mongoengine import Document, StringField, DateTimeField
+from mongoengine import Document, StringField, DateTimeField, DictField, BooleanField, ReferenceField
 from flask_bcrypt import generate_password_hash, check_password_hash
 from datetime import datetime
+import uuid
+
 
 class User(Document):
     meta = {'collection': 'users'}
@@ -67,3 +69,34 @@ class User(Document):
 
     def __repr__(self):
         return f"<User {self.email}>"
+    
+
+# In models.py, update the Task model
+class Task(Document):
+    meta = {'collection': 'tasks'}
+    
+    user = ReferenceField(User, required=True)
+    task_type = StringField(required=True)  # outreach_campaign, profile_collection, etc.
+    status = StringField(required=True, default='queued')  # queued, processing, completed, failed
+    params = DictField()
+    result = DictField()
+    created_at = DateTimeField(default=datetime.utcnow)
+    started_at = DateTimeField()
+    completed_at = DateTimeField()
+    error = StringField()
+    
+    def to_dict(self):
+        return {
+            'id': str(self.id),
+            'type': self.task_type,
+            'status': self.status,
+            'params': self.params,
+            'result': self.result,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'started_at': self.started_at.isoformat() if self.started_at else None,
+            'completed_at': self.completed_at.isoformat() if self.completed_at else None,
+            'error': self.error
+        }
+    def __repr__(self):
+        return f"<Task {self.id} type={self.task_type} user={self.user.email}>"
+

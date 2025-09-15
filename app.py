@@ -1,8 +1,9 @@
+from asyncio import tasks
 from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify
 import os
 import pandas as pd
 from werkzeug.utils import secure_filename
-from models import User
+from models import User, Task
 from linkedin_automation import LinkedInAutomation
 from datetime import datetime
 import re
@@ -85,121 +86,38 @@ def linkedin_setup_required(f):
     decorated_function.__name__ = f.__name__
     return decorated_function
 
-class LocalClientManager:
+class ClientManager:
     def __init__(self):
-        self.default_client_url = "http://127.0.0.1:5001"
-        self.client_urls = {}  # user_id -> client_url mapping
+        self.clients = {}  # client_id -> client info
+        self.client_tasks = defaultdict(list)
     
-    def register_client(self, user_id, client_url):
-        """Register a client URL for a user"""
-        self.client_urls[user_id] = client_url
-        logger.info(f"✅ Registered client for user {user_id}: {client_url}")
+    def register_client(self, client_id, client_info):
+        self.clients[client_id] = client_info
     
-    def get_client_url(self, user_id):
-        """Get client URL for a user"""
-        return self.client_urls.get(str(user_id), self.default_client_url)
+    def is_client_available(self, client_id):
+        return client_id in self.clients
     
-    def is_client_available(self, user_id):
-        """Check if local client is available"""
-        client_url = self.get_client_url(user_id)
-        try:
-            response = requests.get(f"{client_url}/health", timeout=5)
-            return response.status_code == 200
-        except Exception:
-            return False
+    def get_client_url(self, client_id):
+        if client_id in self.clients:
+            return self.clients[client_id].get('client_url')
+        return None
     
-    def send_campaign_request(self, user_id, campaign_data):
-        """Send campaign request to local client"""
-        client_url = self.get_client_url(user_id)
-        try:
-            user = User.objects.get(id=user_id)
-            payload = {
-                'campaign_id': campaign_data['campaign_id'],
-                'user_config': {
-                    'linkedin_email': user.linkedin_email,
-                    'linkedin_password': user.get_linkedin_password(),
-                    'gemini_api_key': user.gemini_api_key
-                },
-                'campaign_data': campaign_data
-            }
-            
-            response = requests.post(f"{client_url}/start_campaign", json=payload, timeout=10)
-            return response.json()
-        except Exception as e:
-            logger.error(f"❌ Error sending campaign request: {e}")
-            return {'success': False, 'error': str(e)}
-    def send_collection_request(self, user_id, collection_params):
-        """Send Sales Navigator profile collection request to local client"""
-        client_url = self.get_client_url(user_id)
-        try:
-            user = User.objects.get(id=user_id)
-            payload = {
-                'collection_id': collection_params.get('collection_id'),
-                'user_config': {
-                    'linkedin_email': user.linkedin_email,
-                    'linkedin_password': user.get_linkedin_password(),
-                    'gemini_api_key': user.gemini_api_key
-                },
-                'collection_params': collection_params
-            }
-            response = requests.post(f"{client_url}/collect_profiles", json=payload, timeout=15)
-            return response.json()
-        except Exception as e:
-            logger.error(f"❌ Error sending collection request: {e}")
-            return {'success': False, 'error': str(e)}
-    def send_keyword_search_request(self, user_id, search_params):
-        """Send keyword search request to local client"""
-        client_url = self.get_client_url(user_id)
-        try:
-            user = User.objects.get(id=user_id)
-            payload = {
-                'search_id': str(uuid.uuid4()),
-                'user_config': {
-                    'linkedin_email': user.linkedin_email,
-                    'linkedin_password': user.get_linkedin_password(),
-                    'gemini_api_key': user.gemini_api_key
-                },
-                'search_params': search_params
-            }
-            
-            response = requests.post(f"{client_url}/keyword_search", json=payload, timeout=10)
-            return response.json()
-        except Exception as e:
-            logger.error(f"❌ Error sending keyword search request: {e}")
-            return {'success': False, 'error': str(e)}
+    def send_task_to_client(self, client_id, task_data):
+        if client_id in self.clients:
+            # Store task for when client polls
+            self.client_tasks[client_id].append(task_data)
+            return {'success': True}
+        return {'success': False, 'error': 'Client not registered'}
     
-    def send_inbox_processing_request(self, user_id):
-        """Send inbox processing request to local client"""
-        client_url = self.get_client_url(user_id)
-        try:
-            user = User.objects.get(id=user_id)
-            payload = {
-                'process_id': str(uuid.uuid4()),
-                'user_config': {
-                    'linkedin_email': user.linkedin_email,
-                    'linkedin_password': user.get_linkedin_password(),
-                    'gemini_api_key': user.gemini_api_key
-                }
-            }
-            
-            response = requests.post(f"{client_url}/process_inbox", json=payload, timeout=10)
-            return response.json()
-        except Exception as e:
-            logger.error(f"❌ Error sending inbox processing request: {e}")
-            return {'success': False, 'error': str(e)}
-    
-    def send_campaign_action(self, user_id, payload):
-        """Send campaign action (send/skip/edit) to local client"""
-        client_url = self.get_client_url(user_id)
-        try:
-            response = requests.post(f"{client_url}/campaign_action", json=payload, timeout=10)
-            return response.json()
-        except Exception as e:
-            logger.error(f"❌ Error sending campaign action: {e}")
-            return {'success': False, 'error': str(e)}
+    def get_client_tasks(self, client_id):
+        if client_id in self.client_tasks:
+            tasks = self.client_tasks[client_id]
+            self.client_tasks[client_id] = []  # Clear tasks after retrieving
+            return tasks
+        return []
 
 # Initialize the client manager
-client_manager = LocalClientManager()
+client_manager = ClientManager()
 
 @app.route('/client_setup')
 @login_required
@@ -212,43 +130,6 @@ def client_setup():
                          user=user, 
                          client_available=client_available,
                          client_url=client_manager.get_client_url(str(user.id)))
-
-@app.route('/register_client', methods=['POST'])
-@login_required
-def register_client():
-    """Register local client URL"""
-    try:
-        user = get_current_user()
-        client_url = request.json.get('client_url', 'http://127.0.0.1:5001')
-        
-        # Validate URL format
-        parsed = urlparse(client_url)
-        if not parsed.scheme or not parsed.netloc:
-            return jsonify({'success': False, 'error': 'Invalid URL format'}), 400
-        
-        # Test connection
-        try:
-            response = requests.get(f"{client_url}/health", timeout=5)
-            if response.status_code != 200:
-                return jsonify({'success': False, 'error': 'Client not responding'}), 400
-        except Exception as e:
-            return jsonify({'success': False, 'error': f'Cannot connect to client: {e}'}), 400
-        
-        # Register client
-        client_manager.register_client(str(user.id), client_url)
-        
-        return jsonify({'success': True, 'message': 'Client registered successfully'})
-        
-    except Exception as e:
-        return jsonify({'success': False, 'error': str(e)}), 500
-
-@app.route('/check_client_status')
-@login_required
-def check_client_status():
-    """Check if local client is available"""
-    user = get_current_user()
-    available = client_manager.is_client_available(str(user.id))
-    return jsonify({'available': available})
 
 @app.route('/')
 def index():
@@ -370,6 +251,12 @@ def dashboard():
     return render_template('dashboard.html', 
                          user=user,
                          stats=stats)
+
+@app.route('/profile')
+@login_required
+def profile():
+    user = get_current_user()
+    return render_template('profile.html', user=user)
 
 @app.route('/settings', methods=['GET', 'POST'])
 @login_required
@@ -630,39 +517,37 @@ def create_campaign_from_selection():
 @app.route('/start_campaign', methods=['POST'])
 @login_required
 def start_campaign():
-    try:
-        user = get_current_user()
-        campaign_id = request.json.get('campaign_id')
-        
-        campaign_data = session.get('current_campaign')
-        if not campaign_data or campaign_data.get('campaign_id') != campaign_id:
+    user = get_current_user()
+    campaign_id = request.json.get('campaign_id')
+
+    campaign_data = session.get('current_campaign')
+    if not campaign_data or campaign_data.get('campaign_id') != campaign_id:
             return jsonify({'error': 'Campaign not found in session'}), 404
 
-        if not client_manager.is_client_available(str(user.id)):
-            return jsonify({
-                'error': 'Local client not available. Please start it.',
-                'redirect': url_for('client_setup')
-            }), 400
-
-        # Enhanced campaign data with confirmation settings
-        enhanced_campaign_data = campaign_data.copy()
-        enhanced_campaign_data.update({
-            'requires_confirmation': True,  # Enable preview mode
-            'max_contacts_per_batch': 1,   # Process one contact at a time
-            'confirmation_timeout': 300,   # 5 minutes per contact decision
-            'auto_skip_timeout': True,     # Skip if no decision made
-            'priority_order': ['connection_with_note', 'connection_without_note', 'direct_message']
+    try:
+        # Create the task and save it to the database
+        task = Task(
+            user=user,
+            task_type='outreach_campaign',
+            params={
+                'campaign_id': campaign_data['campaign_id'],
+                'campaign_data': campaign_data
+            },
+            status='queued'
+        )
+        task.save()
+        
+        logger.info(f"✅ Queued task {task.id} for user {user.email}")
+        
+        # Give immediate feedback to the user on the dashboard
+        return jsonify({
+            'success': True, 
+            'message': 'Campaign has been queued for the client.',
+            'task_id': str(task.id)
         })
 
-        result = client_manager.send_campaign_request(str(user.id), enhanced_campaign_data)
-        
-        if result.get('success'):
-            return jsonify(result)
-        else:
-            return jsonify(result), 500
-
     except Exception as e:
-        logger.error(f"❌ Start campaign error: {str(e)}")
+        logger.error(f"❌ Error queuing campaign task: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/campaign_action', methods=['POST'])
@@ -727,62 +612,47 @@ def get_campaign_results(campaign_id):
 def campaign_status():
     return jsonify(automation_status)
 
+# In app.py, find and REPLACE the keyword_search function
+
 @app.route('/keyword_search', methods=['GET', 'POST'])
 @login_required
 @linkedin_setup_required
 def keyword_search():
     user = get_current_user()
-    
     if request.method == 'POST':
         try:
             search_keywords = request.form.get('keywords', '').strip()
+            # location is currently unused, but we'll keep it for future use
             location = request.form.get('location', '').strip()
-            search_type = request.form.get('search_type', 'search_only')
             max_invites = int(request.form.get('max_invites', 10))
 
             if not search_keywords:
                 flash('Please enter search keywords!', 'error')
                 return render_template('keyword_search.html', user=user)
-            
-            # Check if local client is available
-            if not client_manager.is_client_available(str(user.id)):
-                flash('Local client not available. Please start the local client application.', 'error')
-                return redirect(url_for('client_setup'))
-            
-            search_params = {
+
+            # --- CONVERT TO TASK QUEUE ---
+            task_params = {
                 'keywords': search_keywords,
-                'location': location,
-                'search_type': search_type,
                 'max_invites': max_invites
             }
             
-            # Send request to local client
-            result = client_manager.send_keyword_search_request(str(user.id), search_params)
+            task = Task(
+                user=user,
+                task_type='keyword_search',
+                params=task_params,
+                status='queued'
+            )
+            task.save()
             
-            if result.get('success'):
-                flash('Keyword search started on local client!', 'success')
-                session['current_search'] = {
-                    'search_id': result.get('search_id'),
-                    'keywords': search_keywords,
-                    'location': location,
-                    'search_type': search_type,
-                    'max_invites': max_invites
-                }
-            else:
-                flash(f'Search failed: {result.get("error")}', 'error')
-            
+            flash(f'Keyword search for "{search_keywords}" has been queued for the client.', 'success')
             return redirect(url_for('keyword_search'))
             
         except Exception as e:
             flash(f'Search error: {str(e)}', 'error')
             return render_template('keyword_search.html', user=user)
     
-    # GET request - show form and any previous search results
-    search_info = session.get('current_search')
-    return render_template('keyword_search.html',
-                         user=user,
-                         search_info=search_info,
-                         client_available=client_manager.is_client_available(str(user.id)))
+    # GET request - show form
+    return render_template('keyword_search.html', user=user)
 
 @app.route('/search_results/<search_id>')
 @login_required
@@ -825,6 +695,126 @@ def preview_message():
         
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+    
+@app.route('/api/get-tasks', methods=['POST'])
+def api_get_tasks():
+    """
+    Client polling endpoint - enhanced for client manager
+    """
+    auth = request.headers.get('Authorization', '')
+    api_key = None
+    if auth.startswith('Bearer '):
+        api_key = auth.replace('Bearer ', '').strip()
+    else:
+        api_key = (request.json or {}).get('api_key')
+
+    if not api_key:
+        return jsonify({'error': 'Missing API key'}), 401
+
+    # Validate API key and get user
+    user = User.objects(gemini_api_key=api_key).first()
+    if not user:
+        return jsonify({'error': 'Invalid API key'}), 403
+
+    # Get client ID from request
+    client_id = (request.json or {}).get('client_id')
+    if not client_id:
+        return jsonify({'error': 'Missing client ID'}), 400
+        
+    # Register/update client info
+    client_info = {
+        'last_seen': datetime.utcnow(),
+        'client_url': request.json.get('client_url'),
+        'user_agent': request.headers.get('User-Agent', 'Unknown')
+    }
+    client_manager.register_client(client_id, client_info)
+    
+    # Get tasks for this client
+    tasks = client_manager.get_client_tasks(client_id)
+    
+    # Also check database for queued tasks
+    db_tasks = Task.objects(user=user, status='queued').order_by('+created_at')
+    for task in db_tasks:
+        tasks.append({
+            'id': str(task.id),
+            'type': task.task_type,
+            'params': task.params or {}
+        })
+        task.status = 'processing'
+        task.save()
+    
+    if not tasks:
+        return ('', 204)  # No tasks right now
+    
+    return jsonify({'tasks': tasks}), 200
+
+# Add to app.py
+@app.route('/api/task-result', methods=['POST'])
+def api_task_result():
+    """Receive task results from clients"""
+    try:
+        data = request.json
+        task_id = data.get('task_id')
+        success = data.get('success', False)
+        result = data.get('result', {})
+        error = data.get('error')
+        
+        if not task_id:
+            return jsonify({'error': 'Missing task_id'}), 400
+            
+        # Update the task in the database
+        task = Task.objects.get(id=task_id)
+        task.status = 'completed' if success else 'failed'
+        task.result = result
+        task.error = error
+        task.completed_at = datetime.utcnow()
+        task.save()
+        
+        # If it's a campaign, update campaign results
+        if task.task_type == 'outreach_campaign':
+            campaign_id = task.params.get('campaign_data', {}).get('campaign_id')
+            if campaign_id:
+                campaign_results[campaign_id] = result
+        
+        return jsonify({'success': True})
+        
+    except Task.DoesNotExist:
+        return jsonify({'error': 'Task not found'}), 404
+    except Exception as e:
+        logger.error(f"Error processing task result: {e}")
+        return jsonify({'error': str(e)}), 500
+
+# Add to app.py
+@app.route('/api/register-client', methods=['POST'])
+def api_register_client():
+    """Register a new client"""
+    try:
+        data = request.json
+        client_id = data.get('client_id')
+        client_url = data.get('client_url')
+        api_key = data.get('api_key')
+        
+        if not all([client_id, client_url, api_key]):
+            return jsonify({'error': 'Missing required parameters'}), 400
+            
+        # Validate API key
+        user = User.objects(gemini_api_key=api_key).first()
+        if not user:
+            return jsonify({'error': 'Invalid API key'}), 403
+            
+        # Register client
+        client_manager.register_client(client_id, {
+            'user_id': str(user.id),
+            'client_url': client_url,
+            'last_seen': datetime.utcnow(),
+            'user_agent': request.headers.get('User-Agent', 'Unknown')
+        })
+        
+        return jsonify({'success': True, 'message': 'Client registered successfully'})
+        
+    except Exception as e:
+        logger.error(f"Error registering client: {e}")
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/confirm_message_action', methods=['POST'])
 @login_required
@@ -863,6 +853,45 @@ def confirm_message_action():
         
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+    
+
+@app.route('/api/inbox_results', methods=['POST'])
+def api_inbox_results():
+    """
+    Clients report task results here.
+    """
+    auth = request.headers.get('Authorization', '')
+    api_key = None
+    if auth.startswith('Bearer '):
+        api_key = auth.replace('Bearer ', '').strip()
+    else:
+        api_key = (request.json or {}).get('api_key')
+
+    if not api_key:
+        return jsonify({'error': 'Missing API key'}), 401
+
+    user = User.objects(gemini_api_key=api_key).first()
+    if not user:
+        return jsonify({'error': 'Invalid API key'}), 403
+
+    payload = request.get_json() or {}
+    task_id = payload.get('process_id') or payload.get('task_id')
+    results = payload.get('results')
+
+
+    # Store results — adapt to your DB/logic
+    try:
+        with open(f"reports/{task_id}.json", "w", encoding="utf-8") as f:
+            json.dump({
+                'user': str(user.id),
+                'results': results,
+                'received_at': datetime.utcnow().isoformat()
+            }, f, indent=2)
+    except Exception as e:
+        logger.error(f"Failed to save results for {task_id}: {e}")
+
+    return jsonify({'success': True}), 200
+
 
 @app.route('/ai_inbox', methods=['GET', 'POST'])
 @login_required
@@ -902,40 +931,35 @@ def ai_inbox():
 def get_inbox_results(inbox_id):
     results = inbox_results.get(inbox_id, {})
     return jsonify(results)
-
-@app.route('/api/get-tasks', methods=['POST'])
-def get_tasks():
-    data = request.get_json()
-    email = data.get('email')
-    api_key = data.get('api_key')
-
-    # Optional: validate email/API key
-    # Lookup tasks in DB (or return static test data for now)
-    sample_tasks = [
-        {
-            "profile_url": "https://www.linkedin.com/in/example123",
-            "message": "Hi! This is a test message from your automation bot."
-        }
-    ]
-    return jsonify({"tasks": sample_tasks})
     
-@app.route('/tasks', methods=['POST'])
-def tasks():
-    data = request.json or {}
-    email = data.get('email')
-    api_key = data.get('api_key')
-    # TODO: validate email/api_key against your User model
-    # For now, just return some dummy tasks or pull from your campaign_results
-    tasks = []
-    for cid, results in campaign_results.items():
-        for contact in results.get('contacts_processed', []):
-            if not contact['success']:
-                continue
-            tasks.append({
-                'profile_url': contact['linkedin_url'],
-                'message': contact['message']
-            })
-    return jsonify(tasks=tasks)
+@app.route('/api/create-task', methods=['POST'])
+def api_create_task():
+    """
+    Dashboard/admin can create tasks for a user.
+    Expects: { "user_id": "...", "type": "process_inbox", "params": {...} }
+    """
+    data = request.get_json() or {}
+    user_id = data.get("user_id")
+    ttype = data.get("type")
+    params = data.get("params", {})
+
+    if not user_id or not ttype:
+        return jsonify({'error': 'user_id and type are required'}), 400
+
+    user = User.objects(id=user_id).first()
+    if not user:
+        return jsonify({'error': 'User not found'}), 404
+
+    task = Task(
+        user=user,
+        task_id=str(uuid.uuid4()),
+        type=ttype,
+        params=params
+    ).save()
+
+    return jsonify({'success': True, 'task_id': task.task_id}), 201
+
+
 
 @app.route('/api/campaign_progress', methods=['POST'])
 def receive_campaign_progress():
@@ -978,65 +1002,6 @@ def receive_search_results():
         
     except Exception as e:
         logger.error(f"❌ Error receiving search results: {e}")
-        return jsonify({'success': False, 'error': str(e)}), 500
-
-@app.route('/api/inbox_results', methods=['POST'])
-def receive_inbox_results():
-    """Receive inbox processing results from local client"""
-    try:
-        data = request.json
-        process_id = data.get('process_id')
-        results = data.get('results', {})
-        
-        # Store results in inbox_results
-        inbox_results[process_id] = results
-        
-        logger.info(f"✅ Received inbox results for {process_id}")
-        return jsonify({'success': True})
-        
-    except Exception as e:
-        logger.error(f"❌ Error receiving inbox results: {e}")
-        return jsonify({'success': False, 'error': str(e)}), 500
-
-@app.route('/api/register_client_bot', methods=['POST'])
-def register_client_bot():
-    """
-    Unauthenticated endpoint for the client bot to register itself.
-    Authentication is done via a shared secret (Gemini API Key).
-    """
-    try:
-        data = request.json
-        client_url = data.get('client_url')
-        gemini_key = data.get('gemini_api_key')
-
-        if not client_url or not gemini_key:
-            return jsonify({'success': False, 'error': 'Missing client_url or gemini_api_key'}), 400
-
-        # Find the user by their unique Gemini API key
-        user = User.objects(gemini_api_key=gemini_key).first()
-
-        if not user:
-            return jsonify({'success': False, 'error': 'Invalid API key. User not found.'}), 403
-
-        # Test the provided client URL to ensure it's reachable
-        try:
-            logger.info(f"🧪 Testing connection to {client_url}...")
-            response = requests.get(f"{client_url}/health", timeout=30)
-            if response.status_code == 200:
-                logger.info("✅ Client connection test successful")
-            else:
-                logger.warning(f"⚠️ Client responded with status {response.status_code}")
-        except requests.exceptions.RequestException as e:
-            return jsonify({'success': False, 'error': f'Cannot connect to client: {e}'}), 400
-
-        # Register the client URL for the found user
-        client_manager.register_client(str(user.id), client_url)
-        logger.info(f"✅ Successfully registered client bot for user {user.email} with URL: {client_url}")
-        
-        return jsonify({'success': True, 'message': 'Client registered successfully'})
-
-    except Exception as e:
-        logger.error(f"❌ Error during client bot registration: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/logout')
