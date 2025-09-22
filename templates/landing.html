@@ -1,0 +1,1013 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>LinkedHelper - White Glass Theme</title>
+  <style>
+    :root {
+      --primary-color: #16457D;
+      --primary-dark: #16457D;
+      --text-color: #222;
+      --text-light: #555;
+      --glass-bg: rgba(255, 255, 255, 0.3);
+      --glass-border: rgba(255, 255, 255, 0.5);
+      --shadow-color: rgba(0, 0, 0, 0.05);
+      --btn-bg: var(--primary-color);
+      --btn-hover-bg: var(--primary-dark);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    }
+
+    body {
+      background: #fff;
+      color: var(--text-color);
+      line-height: 1.6;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      font-size: 16px;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+
+    a {
+      color: var(--primary-color);
+      text-decoration: none;
+      transition: color 0.3s ease;
+    }
+
+    a:hover {
+      color: var(--primary-dark);
+    }
+
+    header {
+      width: 100%;
+      padding: 1rem 2rem;
+      background: var(--glass-bg);
+      border-bottom: 1px solid var(--glass-border);
+      box-shadow: 0 2px 8px var(--shadow-color);
+      backdrop-filter: blur(15px);
+      -webkit-backdrop-filter: blur(15px);
+      position: sticky;
+      top: 0;
+      z-index: 1000;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .logo-img {
+      height: 40px;
+      width: auto;
+    }
+
+    /* Modern horizontal navigation */
+    nav {
+      display: flex;
+      align-items: center;
+    }
+
+    nav ul {
+      list-style: none;
+      display: flex;
+      align-items: center;
+      gap: 2.5rem;
+      margin: 0;
+      padding: 0;
+    }
+
+    nav ul li {
+      position: relative;
+    }
+
+    nav ul li a {
+      font-weight: 500;
+      font-size: 1rem;
+      color: var(--primary-color);
+      padding: 0.5rem 0;
+      position: relative;
+      transition: all 0.3s ease;
+    }
+
+    nav ul li a:hover {
+      color: var(--primary-dark);
+    }
+
+    /* Modern underline effect */
+    nav ul li a::after {
+      content: '';
+      position: absolute;
+      width: 0;
+      height: 2px;
+      bottom: -2px;
+      left: 50%;
+      background: var(--primary-color);
+      transition: all 0.3s ease;
+      transform: translateX(-50%);
+    }
+
+    nav ul li a:hover::after {
+      width: 100%;
+    }
+
+    /* Login button styling */
+    .nav-login-btn {
+      background: var(--btn-bg) !important;
+      color: white !important;
+      padding: 0.6rem 1.5rem !important;
+      border-radius: 25px;
+      font-weight: 600;
+      box-shadow: 0 2px 10px rgba(22, 69, 125, 0.3);
+      transition: all 0.3s ease;
+      border: none;
+      cursor: pointer;
+    }
+
+    .nav-login-btn:hover {
+      background: var(--primary-dark) !important;
+      color: white !important;
+      transform: translateY(-1px);
+      box-shadow: 0 4px 15px rgba(22, 69, 125, 0.4);
+    }
+
+    .nav-login-btn::after {
+      display: none;
+    }
+
+    /* Mobile menu toggle */
+    .mobile-menu-toggle {
+      display: none;
+      flex-direction: column;
+      cursor: pointer;
+      padding: 0.5rem;
+      gap: 4px;
+    }
+
+    .mobile-menu-toggle span {
+      width: 25px;
+      height: 3px;
+      background: var(--primary-color);
+      border-radius: 2px;
+      transition: all 0.3s ease;
+    }
+
+    /* Mobile responsive navigation */
+    @media (max-width: 768px) {
+      header {
+        padding: 1rem 1.5rem;
+      }
+
+      .mobile-menu-toggle {
+        display: flex;
+      }
+
+      nav ul {
+        position: absolute;
+        top: 100%;
+        left: 0;
+        right: 0;
+        background: rgba(255, 255, 255, 0.95);
+        backdrop-filter: blur(20px);
+        border-radius: 0 0 15px 15px;
+        box-shadow: 0 8px 32px var(--shadow-color);
+        border: 1px solid var(--glass-border);
+        border-top: none;
+        flex-direction: column;
+        gap: 0;
+        padding: 1rem 0;
+        transform: translateY(-20px);
+        opacity: 0;
+        visibility: hidden;
+        transition: all 0.3s ease;
+      }
+
+      nav ul.active {
+        transform: translateY(0);
+        opacity: 1;
+        visibility: visible;
+      }
+
+      nav ul li {
+        width: 100%;
+        text-align: center;
+        padding: 0.5rem 0;
+      }
+
+      nav ul li a {
+        display: block;
+        padding: 1rem 2rem;
+        font-size: 1.1rem;
+      }
+
+      nav ul li a::after {
+        display: none;
+      }
+
+      .nav-login-btn {
+        margin: 0.5rem 2rem !important;
+        display: block !important;
+        text-align: center !important;
+      }
+    }
+
+    /* Banner */
+    .banner {
+      max-width: 1200px;
+      margin: 3rem auto 5rem;
+      padding: 0 2rem;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 2rem;
+    }
+
+    .banner-text {
+      flex: 1 1 400px;
+      max-width: 600px;
+    }
+
+    .banner-text h1 {
+      font-size: 3rem;
+      color: var(--primary-color);
+      margin-bottom: 1rem;
+      font-weight: 700;
+      line-height: 1.1;
+    }
+
+    .banner-text p {
+      font-size: 1.25rem;
+      color: var(--text-light);
+      margin-bottom: 2rem;
+    }
+
+    .banner-buttons {
+      display: flex;
+      gap: 1rem;
+      flex-wrap: wrap;
+    }
+
+    .btn-primary {
+      background: var(--btn-bg);
+      color: white;
+      border: none;
+      padding: 0.75rem 2rem;
+      font-size: 1.125rem;
+      border-radius: 30px;
+      cursor: pointer;
+      box-shadow: 0 4px 15px rgba(58, 134, 255, 0.4);
+      transition: background-color 0.3s ease;
+      font-weight: 600;
+    }
+
+    .btn-primary:hover {
+      background: var(--btn-hover-bg);
+      box-shadow: 0 6px 20px rgba(38, 93, 255, 0.6);
+      color: white;
+    }
+
+    .btn-secondary {
+      background: transparent;
+      border: 2px solid var(--btn-bg);
+      color: var(--btn-bg);
+      padding: 0.75rem 2rem;
+      font-size: 1.125rem;
+      border-radius: 30px;
+      cursor: pointer;
+      font-weight: 600;
+      transition: background-color 0.3s ease, color 0.3s ease;
+    }
+
+    .btn-secondary:hover {
+      background: var(--btn-bg);
+      color: white;
+    }
+
+    .banner-image {
+      flex: 1 1 400px;
+      max-width: 600px;
+      display: flex;
+      justify-content: center;
+    }
+
+    .banner-image img {
+      max-width: 100%;
+      border-radius: 20px;
+      box-shadow: 0 8px 32px var(--shadow-color);
+      backdrop-filter: blur(15px);
+      -webkit-backdrop-filter: blur(15px);
+      border: 1px solid var(--glass-border);
+    }
+
+    /* Features Section */
+    .features {
+      max-width: 1200px;
+      margin: 0 auto 5rem;
+      padding: 0 2rem;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 2rem;
+    }
+
+    .feature-card {
+      background: var(--glass-bg);
+      border-radius: 20px;
+      padding: 2rem;
+      box-shadow: 0 8px 32px var(--shadow-color);
+      backdrop-filter: blur(15px);
+      -webkit-backdrop-filter: blur(15px);
+      border: 1px solid var(--glass-border);
+      text-align: center;
+      transition: transform 0.3s ease;
+      cursor: default;
+      color: var(--text-color);
+    }
+
+    .feature-card:hover {
+      transform: translateY(-10px);
+      box-shadow: 0 12px 40px rgba(58, 134, 255, 0.3);
+    }
+
+    .feature-icon {
+      width: 60px;
+      height: 60px;
+      margin-bottom: 1rem;
+      fill: var(--primary-color);
+    }
+
+    .feature-title {
+      font-size: 1.25rem;
+      font-weight: 700;
+      margin-bottom: 0.5rem;
+      color: var(--primary-dark);
+    }
+
+    .feature-desc {
+      font-size: 1rem;
+      color: var(--text-light);
+    }
+
+    /* Pricing Section */
+    .pricing {
+      max-width: 1200px;
+      margin: 0 auto 5rem;
+      padding: 0 2rem;
+      text-align: center;
+    }
+
+    .pricing h2 {
+      font-size: 2rem;
+      color: var(--primary-color);
+      margin-bottom: 2rem;
+    }
+
+    .pricing-cards {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(280px, 1fr));
+      gap: 2rem;
+      justify-items: center;
+    }
+
+    .pricing-card {
+      background: var(--glass-bg);
+      border-radius: 20px;
+      padding: 2.5rem 2rem;
+      box-shadow: 0 8px 32px var(--shadow-color);
+      backdrop-filter: blur(15px);
+      -webkit-backdrop-filter: blur(15px);
+      border: 1px solid var(--glass-border);
+      width: 100%;
+      max-width: 320px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      transition: transform 0.3s ease;
+      cursor: default;
+      color: var(--text-color);
+    }
+
+    .pricing-card:hover {
+      transform: translateY(-10px);
+      box-shadow: 0 12px 40px rgba(58, 134, 255, 0.3);
+    }
+
+    .pricing-title {
+      font-size: 1.5rem;
+      font-weight: 700;
+      margin-bottom: 1rem;
+      color: var(--primary-dark);
+    }
+
+    .pricing-price {
+      font-size: 2.5rem;
+      font-weight: 700;
+      margin-bottom: 1rem;
+      color: var(--primary-color);
+    }
+
+    .pricing-period {
+      font-size: 1rem;
+      color: var(--text-light);
+      margin-left: 0.25rem;
+    }
+
+    .pricing-features {
+      list-style: none;
+      text-align: left;
+      margin-bottom: 2rem;
+      color: var(--text-light);
+      font-size: 1rem;
+      padding-left: 0;
+      width: 100%;
+    }
+
+    .pricing-features li {
+      margin-bottom: 0.75rem;
+      padding-left: 1.2rem;
+      position: relative;
+    }
+
+    .pricing-features li::before {
+      content: "✓";
+      position: absolute;
+      left: 0;
+      color: var(--primary-color);
+      font-weight: 700;
+    }
+
+    .btn-pricing {
+      background: var(--btn-bg);
+      color: white;
+      border: none;
+      padding: 0.75rem 2rem;
+      font-size: 1.125rem;
+      border-radius: 30px;
+      cursor: pointer;
+      box-shadow: 0 4px 15px rgba(58, 134, 255, 0.4);
+      transition: background-color 0.3s ease;
+      font-weight: 600;
+      width: 100%;
+      max-width: 220px;
+      text-align: center;
+    }
+
+    .btn-pricing:hover {
+      background: var(--btn-hover-bg);
+      box-shadow: 0 6px 20px rgba(38, 93, 255, 0.6);
+    }
+
+    /* Process Timeline Section */
+    .process {
+      max-width: 900px;
+      margin: 0 auto 5rem;
+      padding: 0 2rem;
+      text-align: center;
+    }
+
+    .process h2 {
+      font-size: 2rem;
+      color: var(--primary-color);
+      margin-bottom: 3rem;
+    }
+
+    .timeline {
+      position: relative;
+      margin: 0 auto;
+      padding: 0;
+      list-style: none;
+      max-width: 700px;
+    }
+
+    .timeline::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      left: 50%;
+      width: 4px;
+      background: var(--primary-color);
+      transform: translateX(-50%);
+      border-radius: 2px;
+      z-index: 1;
+    }
+
+    .timeline-item {
+      position: relative;
+      width: 50%;
+      padding: 1rem 2rem;
+      box-sizing: border-box;
+      z-index: 2;
+    }
+
+    .timeline-item.left {
+      left: 0;
+      text-align: right;
+    }
+
+    .timeline-item.right {
+      left: 50%;
+      text-align: left;
+    }
+
+    .timeline-content {
+      background: var(--glass-bg);
+      border-radius: 15px;
+      padding: 1.5rem 2rem;
+      box-shadow: 0 8px 32px var(--shadow-color);
+      backdrop-filter: blur(15px);
+      -webkit-backdrop-filter: blur(15px);
+      border: 1px solid var(--glass-border);
+      display: inline-block;
+      max-width: 90%;
+      position: relative;
+      color: var(--text-color);
+    }
+
+    .timeline-circle {
+      position: absolute;
+      top: 1.5rem;
+      width: 30px;
+      height: 30px;
+      background: var(--primary-color);
+      border-radius: 50%;
+      color: white;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1rem;
+      box-shadow: 0 0 8px rgba(58, 134, 255, 0.7);
+      z-index: 3;
+    }
+
+    .timeline-item.left .timeline-circle {
+      right: -15px;
+    }
+
+    .timeline-item.right .timeline-circle {
+      left: -15px;
+    }
+
+    .timeline-content::after {
+      content: '';
+      position: absolute;
+      top: 1.5rem;
+      width: 0;
+      height: 0;
+      border-style: solid;
+    }
+
+    .timeline-item.left .timeline-content::after {
+      right: -15px;
+      border-width: 10px 0 10px 15px;
+      border-color: transparent transparent transparent var(--glass-bg);
+    }
+
+    .timeline-item.right .timeline-content::after {
+      left: -15px;
+      border-width: 10px 15px 10px 0;
+      border-color: transparent var(--glass-bg) transparent transparent;
+    }
+
+    .process-title {
+      font-size: 1.25rem;
+      font-weight: 700;
+      margin-bottom: 0.5rem;
+      color: var(--primary-dark);
+    }
+
+    .process-desc {
+      font-size: 1rem;
+      color: var(--text-light);
+    }
+
+    /* Footer */
+    footer {
+      background: var(--glass-bg);
+      border-top: 1px solid var(--glass-border);
+      box-shadow: 0 -2px 8px var(--shadow-color);
+      backdrop-filter: blur(15px);
+      -webkit-backdrop-filter: blur(15px);
+      padding: 1.5rem 2rem;
+      text-align: center;
+      font-size: 0.9rem;
+      color: var(--text-light);
+      margin-top: auto;
+    }
+
+    /* Responsive */
+    @media (max-width: 900px) {
+      .features {
+        grid-template-columns: 1fr;
+      }
+
+      .pricing-cards {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    @media (max-width: 768px) {
+      .timeline::before {
+        left: 8px;
+      }
+
+      .timeline-item {
+        width: 100% !important;
+        padding-left: 3rem !important;
+        padding-right: 1rem !important;
+        text-align: left !important;
+        left: 0 !important;
+        margin-bottom: 2rem;
+      }
+
+      .timeline-item .timeline-circle {
+        top: 0 !important;
+        left: 0 !important;
+        right: auto !important;
+      }
+
+      .timeline-content::after {
+        display: none;
+      }
+    }
+
+    /* Animations */
+    @keyframes fadeUp {
+      0% {
+        opacity: 0;
+        transform: translateY(30px);
+      }
+
+      100% {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    @keyframes slideInLeft {
+      0% {
+        opacity: 0;
+        transform: translateX(-50px);
+      }
+
+      100% {
+        opacity: 1;
+        transform: translateX(0);
+      }
+    }
+
+    @keyframes slideInRight {
+      0% {
+        opacity: 0;
+        transform: translateX(50px);
+      }
+
+      100% {
+        opacity: 1;
+        transform: translateX(0);
+      }
+    }
+
+    .animate.show {
+      opacity: 1;
+      animation: fadeUp 0.8s forwards;
+    }
+
+    .animate-left {
+      transform: translateX(-50px);
+    }
+
+    .animate-left.show {
+      animation: slideInLeft 0.8s forwards;
+    }
+
+    .animate-right {
+      transform: translateX(50px);
+    }
+
+    .animate-right.show {
+      animation: slideInRight 0.8s forwards;
+    }
+  </style>
+</head>
+
+<body>
+  <!-- Navigation Header -->
+  <header class="animate">
+    <img src="static/images/linksprig-logo.png" alt="LinkSprig" class="logo-img">
+    <nav>
+      <ul id="nav-menu">
+        <li><a href="#features">Features</a></li>
+        <li><a href="#pricing">Pricing</a></li>
+        <li><a href="#process">Our Process</a></li>
+        <li><a href="#contact">Contact</a></li>
+        <li><a href="login" class="nav-login-btn">Login</a></li>
+      </ul>
+    </nav>
+    <div class="mobile-menu-toggle" id="mobile-toggle">
+      <span></span>
+      <span></span>
+      <span></span>
+    </div>
+  </header>
+
+  <!-- Banner -->
+  <section class="banner">
+    <div class="banner-text animate">
+      <h1>Automate Your LinkedIn Outreach</h1>
+      <p>LinkedHelper is the most powerful LinkedIn automation tool to grow your network, generate leads, and boost
+        sales.</p>
+      <div class="banner-buttons">
+        <button class="btn-primary" onclick="alert('Get Started clicked!')">Get Started</button>
+        <button class="btn-secondary" onclick="alert('Watch Demo clicked!')">Watch Demo</button>
+      </div>
+    </div>
+
+    <div class="banner-video animate animate-right" style="position: relative; flex: 1 1 400px; max-width: 600px;">
+      <!-- Video element -->
+      <video id="bannerVideo" style="border-radius: 20px; max-width: 100%; display: block;"
+        poster="https://via.placeholder.com/600x400/E8F4FD/16457D?text=Demo+Video" controls>
+        <source src="#" type="video/mp4">
+        Your browser does not support the video tag.
+      </video>
+
+      <!-- Play button overlay -->
+      <button id="playButton" style="
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      background: rgba(58, 134, 255, 0.8);
+      border: none;
+      border-radius: 50%;
+      width: 80px;
+      height: 80px;
+      cursor: pointer;
+      font-size: 2rem;
+      color: white;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 4px 15px rgba(58,134,255,0.5);
+    ">
+        ▶
+      </button>
+    </div>
+  </section>
+
+  <!-- Features Section -->
+  <section id="features" class="features animate">
+    <div class="feature-card animate">
+      <svg class="feature-icon" viewBox="0 0 64 64">
+        <circle cx="32" cy="32" r="30" fill="currentColor" />
+        <path d="M20 32h24M32 20v24" stroke="#fff" stroke-width="4" stroke-linecap="round" />
+      </svg>
+      <h3 class="feature-title">Automated Messaging</h3>
+      <p class="feature-desc">Send personalized connection requests and follow-ups automatically.</p>
+    </div>
+    <div class="feature-card animate">
+      <svg class="feature-icon" viewBox="0 0 64 64">
+        <rect x="12" y="12" width="40" height="40" rx="8" ry="8" fill="currentColor" />
+        <path d="M20 32h24M32 20v24" stroke="#fff" stroke-width="4" stroke-linecap="round" />
+      </svg>
+      <h3 class="feature-title">Lead Generation</h3>
+      <p class="feature-desc">Find and target your ideal prospects with advanced filters.</p>
+    </div>
+    <div class="feature-card animate">
+      <svg class="feature-icon" viewBox="0 0 64 64">
+        <polygon points="32 12 52 52 12 52" fill="currentColor" />
+        <circle cx="32" cy="32" r="6" fill="#fff" />
+      </svg>
+      <h3 class="feature-title">Analytics & Reporting</h3>
+      <p class="feature-desc">Track your campaign performance and optimize your outreach.</p>
+    </div>
+  </section>
+
+  <section class="opportunities-section"
+    style="background:#fff; color:#111; padding:4rem 2rem; position:relative; overflow:hidden;">
+    <div class="container"
+      style="max-width:1200px; margin:0 auto; display:flex; flex-wrap:wrap; gap:2rem; align-items:center;">
+      <!-- Left: Features List -->
+      <div class="features-list" style="flex:1 1 500px; min-width:280px;">
+        <div class="feature-item" style="margin-bottom:2rem;">
+          <div class="feature-line" style="width:50px; height:3px; background:#f7941d; margin-bottom:0.5rem;"></div>
+          <h3 style="font-size:1.5rem; font-weight:700; margin-bottom:0.5rem;">Grow your network</h3>
+          <p style="color:#7a7a7a; line-height:1.5;">Automatically invite targeted 2nd & 3rd level contacts with a
+            personal note.</p>
+        </div>
+        <div class="feature-item" style="margin-bottom:2rem;">
+          <div class="feature-line" style="width:50px; height:3px; background:#f7941d; margin-bottom:0.5rem;"></div>
+          <h3 style="font-size:1.5rem; font-weight:700; margin-bottom:0.5rem;">Build smart message chains</h3>
+          <p style="color:#7a7a7a; line-height:1.5;">Auto-responder to newly added connections and drip campaigns for
+            chain messaging with reply detection.</p>
+        </div>
+        <div class="feature-item" style="margin-bottom:2rem;">
+          <div class="feature-line" style="width:50px; height:3px; background:#f7941d; margin-bottom:0.5rem;"></div>
+          <h3 style="font-size:1.5rem; font-weight:700; margin-bottom:0.5rem;">Works in both LinkedIn Basic & Premium
+          </h3>
+          <p style="color:#7a7a7a; line-height:1.5;">Dozens of tools available to extend the functionality for both
+            Basic and Premium LinkedIn. Work in Sales Navigator, Recruiter, Career, and Business.</p>
+        </div>
+        <div class="feature-item">
+          <div class="feature-line" style="width:50px; height:3px; background:#f7941d; margin-bottom:0.5rem;"></div>
+          <h3 style="font-size:1.5rem; font-weight:700; margin-bottom:0.5rem;">Manage contacts in Linked Helper CRM</h3>
+          <p style="color:#7a7a7a; line-height:1.5;">Manage your LinkedIn connections and lead generation funnel with an
+            inbuilt convenient CRM system.</p>
+        </div>
+      </div>
+
+      <!-- Right: Circular Info Box -->
+      <div class="info-circle" style="
+      flex:1 1 300px;
+      min-width:250px;
+      position:relative;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      height:300px;
+    ">
+        <div style="
+        background:#222;
+        border-radius:50%;
+        width:250px;
+        height:250px;
+        display:flex;
+        flex-direction:column;
+        align-items:center;
+        justify-content:center;
+        padding:2rem;
+        text-align:center;
+      ">
+          <span style="color:#f7941d; font-size:0.9rem; font-weight:600; text-transform:uppercase;">Opportunities</span>
+          <h2 style="font-size:1.75rem; font-weight:700; margin-top:1rem; line-height:1.3;color:white">LinkedIn lead
+            generation tool</h2>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Pricing Section -->
+  <section id="pricing" class="pricing animate">
+    <h2 class="animate">Pricing Plans</h2>
+    <div class="pricing-cards">
+      <div class="pricing-card animate">
+        <h3 class="pricing-title">Starter</h3>
+        <div class="pricing-price">$29<span class="pricing-period">/mo</span></div>
+        <ul class="pricing-features">
+          <li>1 LinkedIn Account</li>
+          <li>Basic Automation</li>
+          <li>Email Support</li>
+        </ul>
+        <button class="btn-pricing">Choose Plan</button>
+      </div>
+      <div class="pricing-card animate">
+        <h3 class="pricing-title">Pro</h3>
+        <div class="pricing-price">$79<span class="pricing-period">/mo</span></div>
+        <ul class="pricing-features">
+          <li>5 LinkedIn Accounts</li>
+          <li>Advanced Automation</li>
+          <li>Priority Support</li>
+        </ul>
+        <button class="btn-pricing">Choose Plan</button>
+      </div>
+      <div class="pricing-card animate">
+        <h3 class="pricing-title">Enterprise</h3>
+        <div class="pricing-price">Custom<span class="pricing-period"></span></div>
+        <ul class="pricing-features">
+          <li>Unlimited Accounts</li>
+          <li>Full Automation Suite</li>
+          <li>Dedicated Manager</li>
+        </ul>
+        <button class="btn-pricing">Contact Us</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- Process Timeline Section -->
+  <section id="process" class="process animate">
+    <h2 class="animate">Our Process</h2>
+    <ul class="timeline">
+      <li class="timeline-item left animate animate-left">
+        <div class="timeline-circle">1</div>
+        <div class="timeline-content">
+          <h3 class="process-title">Sign Up</h3>
+          <p class="process-desc">Register and connect your LinkedIn account securely.</p>
+        </div>
+      </li>
+      <li class="timeline-item right animate animate-right">
+        <div class="timeline-circle">2</div>
+        <div class="timeline-content">
+          <h3 class="process-title">Setup Campaign</h3>
+          <p class="process-desc">Select target audience and create your automation sequence.</p>
+        </div>
+      </li>
+      <li class="timeline-item left animate animate-left">
+        <div class="timeline-circle">3</div>
+        <div class="timeline-content">
+          <h3 class="process-title">Launch & Track</h3>
+          <p class="process-desc">Start campaigns and monitor analytics in real-time.</p>
+        </div>
+      </li>
+      <li class="timeline-item right animate animate-right">
+        <div class="timeline-circle">4</div>
+        <div class="timeline-content">
+          <h3 class="process-title">Optimize & Grow</h3>
+          <p class="process-desc">Improve your outreach strategy based on performance.</p>
+        </div>
+      </li>
+    </ul>
+  </section>
+
+  <!-- Footer -->
+  <footer class="animate">
+    © 2025 Espial Solutions. All rights reserved.
+  </footer>
+
+  <!-- Scripts -->
+  <script>
+    // Video functionality
+    const video = document.getElementById('bannerVideo');
+    const playBtn = document.getElementById('playButton');
+
+    if (playBtn && video) {
+      playBtn.addEventListener('click', () => {
+        video.play();
+        playBtn.style.display = 'none';
+      });
+
+      // Optional: Pause video when it ends and show button again
+      video.addEventListener('ended', () => {
+        playBtn.style.display = 'flex';
+      });
+    }
+
+    // Mobile menu toggle
+    const mobileToggle = document.getElementById('mobile-toggle');
+    const navMenu = document.getElementById('nav-menu');
+
+    mobileToggle.addEventListener('click', () => {
+      navMenu.classList.toggle('active');
+      
+      // Animate hamburger menu
+      const spans = mobileToggle.querySelectorAll('span');
+      if (navMenu.classList.contains('active')) {
+        spans[0].style.transform = 'rotate(45deg) translate(5px, 5px)';
+        spans[1].style.opacity = '0';
+        spans[2].style.transform = 'rotate(-45deg) translate(7px, -6px)';
+      } else {
+        spans[0].style.transform = '';
+        spans[1].style.opacity = '1';
+        spans[2].style.transform = '';
+      }
+    });
+
+    // Close mobile menu when clicking on a link
+    navMenu.addEventListener('click', (e) => {
+      if (e.target.tagName === 'A') {
+        navMenu.classList.remove('active');
+        const spans = mobileToggle.querySelectorAll('span');
+        spans[0].style.transform = '';
+        spans[1].style.opacity = '1';
+        spans[2].style.transform = '';
+      }
+    });
+
+    // Scroll animations
+    function animateOnScroll() {
+      const elements = document.querySelectorAll('.animate');
+      const windowHeight = window.innerHeight;
+
+      elements.forEach(el => {
+        const elementTop = el.getBoundingClientRect().top;
+        if (elementTop < windowHeight - 100) {
+          el.classList.add('show');
+        }
+      });
+    }
+
+    window.addEventListener('scroll', animateOnScroll);
+    window.addEventListener('load', animateOnScroll);
+
+    // Smooth scrolling for navigation links
+    document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+      anchor.addEventListener('click', function (e) {
+        e.preventDefault();
+        const target = document.querySelector(this.getAttribute('href'));
+        if (target) {
+          target.scrollIntoView({
+            behavior: 'smooth',
+            block: 'start'
+          });
+        }
+      });
+    });
+  </script>
+</body>
+
+</html>

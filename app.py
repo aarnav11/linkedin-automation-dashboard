@@ -1,11 +1,11 @@
-from asyncio import tasks
+from sys import platform
 from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify
 import os
 import pandas as pd
 from werkzeug.utils import secure_filename
 from models import User, Task
 from linkedin_automation import LinkedInAutomation
-from datetime import datetime
+from datetime import datetime, timedelta # Import timedelta
 import re
 import threading
 import json
@@ -88,14 +88,53 @@ def linkedin_setup_required(f):
 
 class ClientManager:
     def __init__(self):
-        self.clients = {}  # client_id -> client info
+        self.clients = {}  # client_uuid -> client info
+        self.user_to_client = {} # Maps user_id -> client_uuid
         self.client_tasks = defaultdict(list)
+        self.active_clients = defaultdict(dict)  # Add this line
     
     def register_client(self, client_id, client_info):
         self.clients[client_id] = client_info
-    
+        # Create the crucial mapping from user_id to the client's unique ID
+        user_id = client_info.get('user_id')
+        if user_id:
+            self.user_to_client[user_id] = client_id
+            logger.info(f"Mapped user {user_id} to client {client_id}")
+
     def is_client_available(self, client_id):
         return client_id in self.clients
+    
+    def is_client_active(self, client_id):
+        """Check if client is active (recently seen)"""
+        if client_id not in self.clients:
+            return False
+        
+        client_info = self.clients[client_id]
+        last_seen = client_info.get('last_seen')
+        if not last_seen:
+            return False
+        
+        try:
+            from datetime import datetime, timedelta
+            if isinstance(last_seen, str):
+                last_seen = datetime.fromisoformat(last_seen.replace('Z', '+00:00'))
+            
+            # Consider active if seen within last 2 minutes
+            return (datetime.utcnow() - last_seen).total_seconds() < 120
+        except:
+            return False
+    
+    def get_client_status(self, client_id):
+        """Get comprehensive client status"""
+        is_active = self.is_client_active(client_id)
+        client_info = self.clients.get(client_id, {})
+        
+        return {
+            'active': is_active,
+            'registered': client_id in self.clients,
+            'last_seen': client_info.get('last_seen'),
+            'client_info': client_info
+        }
     
     def get_client_url(self, client_id):
         if client_id in self.clients:
@@ -104,11 +143,23 @@ class ClientManager:
     
     def send_task_to_client(self, client_id, task_data):
         if client_id in self.clients:
-            # Store task for when client polls
             self.client_tasks[client_id].append(task_data)
             return {'success': True}
         return {'success': False, 'error': 'Client not registered'}
     
+    def send_campaign_action(self, user_id, action_data):
+        """Finds the correct client UUID from the user_id and queues an action."""
+        client_id = self.user_to_client.get(user_id) or user_id # Look up the client's unique ID
+        task_data = {
+            'id': f"action_{uuid.uuid4()}",
+            'type': 'campaign_action',
+            'params': action_data
+        }
+        self.client_tasks[client_id].append(task_data)
+        logger.info(f"✅ Queued action '{action_data.get('action')}' for user {user_id} (client key: {client_id})")
+        return {'success': True, 'message': 'Action queued for client.'}
+
+
     def get_client_tasks(self, client_id):
         if client_id in self.client_tasks:
             tasks = self.client_tasks[client_id]
@@ -116,26 +167,173 @@ class ClientManager:
             return tasks
         return []
 
+    def update_client_heartbeat(self, user_id, client_id=None, client_info=None):
+        """Update last heartbeat for a client instance."""
+        # If client_id not provided, use user_id as client_id
+        if client_id is None:
+            client_id = user_id
+            
+        # Update client info with heartbeat
+        if client_id not in self.clients:
+            self.clients[client_id] = {}
+            
+        self.clients[client_id].update({
+            "last_seen": datetime.utcnow(),
+            "user_id": user_id,
+            "client_info": client_info or {}
+        })
+        
+        # Ensure user mapping exists
+        self.user_to_client[user_id] = client_id
+        
+        return True
+    
+    def get_client_campaign_actions(self, user_id):
+        """Get queued campaign actions for a user"""
+        client_id = self.user_to_client.get(user_id)
+        if client_id:
+            return self.get_client_tasks(client_id)
+        return []
+    
+    def send_collection_request(self, user_id, collection_params):
+        """Send profile collection request to client"""
+        task_data = {
+            'id': f"collection_{uuid.uuid4()}",
+            'type': 'collect_profiles',
+            'params': {
+                'user_config': {
+                    'linkedin_email': '',  # Will be filled by client
+                    'linkedin_password': '',
+                    'gemini_api_key': ''
+                },
+                'collection_params': collection_params
+            }
+        }
+        
+        client_id = self.user_to_client.get(user_id)
+        if client_id and client_id in self.clients:
+            self.client_tasks[client_id].append(task_data)
+            return {'success': True}
+        return {'success': False, 'error': 'Client not available'}
+
 # Initialize the client manager
 client_manager = ClientManager()
 
 @app.route('/client_setup')
 @login_required
 def client_setup():
-    """Show client setup instructions"""
+    """Show client setup instructions with real-time status"""
     user = get_current_user()
-    client_available = client_manager.is_client_available(str(user.id))
+    client_id = str(user.id)
     
-    return render_template('client_setup.html', 
-                         user=user, 
-                         client_available=client_available,
-                         client_url=client_manager.get_client_url(str(user.id)))
+    client_status = client_manager.get_client_status(client_id)
+    
+    return render_template('client_setup.html',
+                         user=user,
+                         client_id=client_id, # This is the user ID
+                         api_key=user.gemini_api_key, # Pass the API key
+                         client_status=client_status)
 
+# Add this new route for client status checking
+@app.route('/api/client-status')
+@login_required
+def api_client_status():
+    """Get real-time client status for the logged-in user"""
+    user = get_current_user()
+    status = client_manager.get_client_status(str(user.id))
+    return jsonify(status)
+
+# Add this route for client heartbeat/ping
+@app.route('/api/client-ping', methods=['POST'])
+def api_client_ping():
+    """Client heartbeat endpoint"""
+    try:
+        auth = request.headers.get('Authorization', '')
+        api_key = None
+        if auth.startswith('Bearer '):
+            api_key = auth.replace('Bearer ', '').strip()
+        
+        if not api_key:
+            return jsonify({'error': 'Missing API key'}), 401
+
+        user = User.objects(gemini_api_key=api_key).first()
+        if not user:
+            return jsonify({'error': 'Invalid API key'}), 403
+
+        user_id = str(user.id)
+        
+        # Get client_id and info from the POST request body
+        client_id = request.json.get('client_id', user_id) if request.json else user_id
+        client_info = request.json.get('client_info', {}) if request.json else {}
+        
+        # Update client heartbeat with proper parameters
+        client_manager.update_client_heartbeat(user_id, client_id, client_info)
+        
+        #
+        # THIS IS THE KEY CHANGE: Get and clear queued actions for this user
+        #
+        actions = client_manager.get_client_campaign_actions(user_id)
+
+        return jsonify({
+            'success': True, 
+            'server_time': datetime.utcnow().isoformat(),
+            'actions': actions  # Return the retrieved actions
+        })
+    
+    except Exception as e:
+        logger.error(f"Client ping error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+def send_heartbeat_ping(self):
+    """Send ping to dashboard"""
+    try:
+        SERVER_BASE = self.config.get('dashboard_url')
+        if not SERVER_BASE:
+            return
+            
+        endpoint = f"{SERVER_BASE.rstrip('/')}/api/client-ping"
+        api_key = self.config.get('client_api_key') or self.config.get('gemini_api_key')
+        
+        payload = {
+            'client_id': self.config.get('client_id', str(uuid.uuid4())),
+            'status': 'active',
+            'timestamp': datetime.now().isoformat(),
+            'client_info': {
+                'platform': platform.system(),
+                'version': '1.0'
+            }
+        }
+        
+        headers = {
+            "Authorization": f"Bearer {api_key}",
+            "Content-Type": "application/json"
+        }
+        
+        resp = requests.post(endpoint, json=payload, headers=headers, timeout=15)
+        if resp.status_code in (200, 201):
+            logger.debug("💓 Heartbeat ping successful")
+            
+            # Process any returned actions
+            data = resp.json()
+            actions = data.get('actions', [])
+            if actions:
+                logger.info(f"📥 Received {len(actions)} actions from dashboard")
+                for action in actions:
+                    self.handle_task(action)
+                    
+        else:
+            logger.warning(f"💓 Heartbeat ping returned {resp.status_code}: {resp.text[:200]}")
+    except Exception as e:
+        logger.debug(f"💓 Heartbeat ping failed: {e}")
+        
 @app.route('/')
-def index():
+def landing():
+    # If user is already logged in, redirect to dashboard
     if 'user_id' in session:
         return redirect(url_for('dashboard'))
-    return redirect(url_for('login'))
+    
+    # Show landing page for non-logged-in users
+    return render_template('landing.html')
 
 @app.route('/register', methods=['GET', 'POST'])
 def register():
@@ -252,6 +450,36 @@ def dashboard():
                          user=user,
                          stats=stats)
 
+@app.route('/get-started')
+def get_started():
+    """Redirect to registration page"""
+    if 'user_id' in session:
+        return redirect(url_for('dashboard'))
+    return redirect(url_for('register'))
+
+@app.route('/demo')
+def demo():
+    """Demo page or redirect to login"""
+    if 'user_id' in session:
+        return redirect(url_for('dashboard'))
+    flash('Please sign up for a free account to try the demo!', 'info')
+    return redirect(url_for('register'))
+
+@app.route('/pricing')
+def pricing():
+    """Pricing page"""
+    return render_template('pricing.html')
+
+@app.route('/features')
+def features():
+    """Features page"""
+    return render_template('features.html')
+
+@app.route('/contact')
+def contact():
+    """Contact page"""
+    return render_template('contact.html')
+
 @app.route('/profile')
 @login_required
 def profile():
@@ -325,68 +553,401 @@ def ai_handler():
             return render_template('ai_handler.html', user=user)
     
     return render_template('ai_handler.html', user=user)
-
-@app.route('/outreach', methods=['GET', 'POST'])
+@app.route('/api/generate-message', methods=['POST'])
 @login_required
 @linkedin_setup_required
+def api_generate_message():
+    """Generate AI message for a specific contact"""
+    try:
+        user = get_current_user()
+        data = request.json
+        
+        contact = data.get('contact', {})
+        template = data.get('message_template', '')
+        
+        # Validate required contact info
+        if not contact.get('Name'):
+            return jsonify({'error': 'Contact name is required'}), 400
+        
+        # Configure Gemini AI
+        import google.generativeai as genai
+        genai.configure(api_key=user.gemini_api_key)
+        model = genai.GenerativeModel('gemini-1.5-flash')
+        
+        # Build context for AI
+        name = contact.get('Name', 'Professional')
+        company = contact.get('Company', 'their company')
+        role = contact.get('Role', 'their role')
+        
+        # Create enhanced prompt
+        prompt = f"""Create a personalized LinkedIn outreach message based on:
+        
+Profile Information:
+- Name: {name}
+- Company: {company}  
+- Role: {role}
+
+Template/Guidelines: {template if template else 'Professional networking outreach'}
+
+Requirements:
+1. Address them by first name only
+2. Reference their specific company and role
+3. Be genuine and professional
+4. Keep under 280 characters
+5. Include a clear call to action
+6. Avoid being overly salesy
+
+Generate only the message text, no labels or formatting."""
+
+        # Generate message with retries
+        for attempt in range(3):
+            try:
+                response = model.generate_content(prompt)
+                generated_message = response.text.strip()
+                
+                # Clean up the response
+                generated_message = re.sub(r'^(Message:|Response:)\s*', '', generated_message, flags=re.IGNORECASE)
+                generated_message = generated_message.strip('"\'[]')
+                
+                # Ensure length limit
+                if len(generated_message) > 280:
+                    generated_message = generated_message[:277] + "..."
+                
+                return jsonify({
+                    'success': True,
+                    'message': generated_message,
+                    'contact': contact,
+                    'character_count': len(generated_message)
+                })
+                
+            except Exception as e:
+                if "429" in str(e) or "rate limit" in str(e).lower():
+                    wait_time = (attempt + 1) * 5
+                    logger.warning(f"Rate limit hit, waiting {wait_time}s...")
+                    time.sleep(wait_time)
+                    continue
+                else:
+                    raise e
+        
+        # Fallback message if AI fails
+        fallback_message = f"Hi {name.split()[0]}, I came across your profile and was impressed by your work at {company}. I'd love to connect and learn more about your experience in {role}. Looking forward to connecting!"
+        
+        return jsonify({
+            'success': True,
+            'message': fallback_message[:280],
+            'contact': contact,
+            'character_count': len(fallback_message[:280]),
+            'fallback': True
+        })
+        
+    except Exception as e:
+        logger.error(f"AI message generation error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+# Add route for batch message preview
+@app.route('/api/preview-campaign-messages', methods=['POST'])
+@login_required
+@linkedin_setup_required
+def api_preview_campaign_messages():
+    """Generate preview messages for multiple contacts in campaign"""
+    try:
+        user = get_current_user()
+        data = request.json
+        
+        campaign_id = data.get('campaign_id')
+        contacts = data.get('contacts', [])
+        template = data.get('message_template', '')
+        preview_count = min(int(data.get('preview_count', 5)), len(contacts))
+        
+        if not campaign_id or not contacts:
+            return jsonify({'error': 'Campaign ID and contacts are required'}), 400
+        
+        # Configure Gemini AI
+        import google.generativeai as genai
+        genai.configure(api_key=user.gemini_api_key)
+        model = genai.GenerativeModel('gemini-1.5-flash')
+        
+        previews = []
+        
+        # Generate previews for first N contacts
+        for i, contact in enumerate(contacts[:preview_count]):
+            try:
+                name = contact.get('Name', 'Professional')
+                company = contact.get('Company', 'their company')
+                role = contact.get('Role', 'their role')
+                
+                prompt = f"""Create a personalized LinkedIn outreach message for:
+- Name: {name}
+- Company: {company}  
+- Role: {role}
+
+Template: {template if template else 'Professional networking outreach'}
+
+Keep under 280 characters, use first name only, be professional and genuine."""
+
+                response = model.generate_content(prompt)
+                generated_message = response.text.strip()
+                generated_message = re.sub(r'^(Message:|Response:)\s*', '', generated_message, flags=re.IGNORECASE)
+                generated_message = generated_message.strip('"\'[]')
+                
+                if len(generated_message) > 280:
+                    generated_message = generated_message[:277] + "..."
+                
+                previews.append({
+                    'index': i,
+                    'contact': contact,
+                    'message': generated_message,
+                    'character_count': len(generated_message)
+                })
+                
+                # Small delay to avoid rate limits
+                time.sleep(0.5)
+                
+            except Exception as e:
+                logger.warning(f"Failed to generate message for contact {i}: {e}")
+                # Add fallback
+                fallback = f"Hi {name.split()[0]}, I'd love to connect with you at {company}. Looking forward to networking!"
+                previews.append({
+                    'index': i,
+                    'contact': contact,
+                    'message': fallback,
+                    'character_count': len(fallback),
+                    'fallback': True
+                })
+        
+        return jsonify({
+            'success': True,
+            'campaign_id': campaign_id,
+            'previews': previews,
+            'total_contacts': len(contacts),
+            'preview_count': len(previews)
+        })
+        
+    except Exception as e:
+        logger.error(f"Campaign preview error: {e}")
+        return jsonify({'error': str(e)}), 500
+    
+    
+@app.route('/outreach', methods=['GET', 'POST'])
+@login_required
+@linkedin_setup_required  
 def outreach():
     user = get_current_user()
     
     if request.method == 'POST':
         try:
-            if 'csv_file' not in request.files:
-                flash('No file selected!', 'error')
-                return render_template('outreach.html', user=user)
+            # Check if this is a preview request
+            if request.form.get('action') == 'preview':
+                return handle_campaign_preview(user)
             
-            file = request.files['csv_file']
-            if file.filename == '':
-                flash('No file selected!', 'error')
-                return render_template('outreach.html', user=user)
+            # Check if this is final campaign start
+            if request.form.get('action') == 'start_campaign':
+                return handle_campaign_start(user)
             
-            if file and file.filename.lower().endswith('.csv'):
-                filename = secure_filename(file.filename)
-                filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-                file.save(filepath)
-                
-                # Process CSV file
-                df = pd.read_csv(filepath)
-                
-                # Validate CSV structure for test.csv format
-                required_columns = ['Name', 'Company', 'Role', 'LinkedIn_profile']
-                missing_columns = [col for col in required_columns if col not in df.columns]
-                
-                if missing_columns:
-                    flash(f'CSV missing required columns: {missing_columns}', 'error')
-                    return render_template('outreach.html', user=user)
-                
-                # Get campaign settings
-                max_contacts = int(request.form.get('max_contacts', 20))
-                message_template = request.form.get('message_template', '')
-                
-                # Store campaign data
-                campaign_data = {
-                    'file_path': filepath,
-                    'message_template': message_template,
-                    'max_contacts': max_contacts,
-                    'total_contacts': len(df),
-                    'contacts': df.to_dict('records'),
-                    'campaign_id': str(uuid.uuid4())
-                }
-                
-                session['current_campaign'] = campaign_data
-                flash(f'CSV uploaded successfully! {len(df)} contacts loaded.', 'success')
-                return render_template('outreach.html', 
-                                     user=user,
-                                     campaign_data=campaign_data)
-            else:
-                flash('Please upload a valid CSV file!', 'error')
-                return render_template('outreach.html', user=user)
-                
+            # Default: File upload and initial setup
+            return handle_file_upload(user)
+            
         except Exception as e:
-            flash(f'File processing error: {str(e)}', 'error')
+            flash(f'Error: {str(e)}', 'error')
             return render_template('outreach.html', user=user)
     
     return render_template('outreach.html', user=user)
+def handle_file_upload(user):
+    """Handle CSV file upload"""
+    if 'csv_file' not in request.files:
+        flash('No file selected!', 'error')
+        return render_template('outreach.html', user=user)
+
+    file = request.files['csv_file']
+    if file.filename == '':
+        flash('No file selected!', 'error')
+        return render_template('outreach.html', user=user)
+
+    if file and file.filename.lower().endswith('.csv'):
+        filename = secure_filename(file.filename)
+        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        file.save(filepath)
+
+        # Process CSV file
+        df = pd.read_csv(filepath)
+        
+        # Validate CSV structure
+        required_columns = ['Name', 'Company', 'Role', 'LinkedIn_profile']
+        missing_columns = [col for col in required_columns if col not in df.columns]
+        if missing_columns:
+            flash(f'CSV missing required columns: {missing_columns}', 'error')
+            return render_template('outreach.html', user=user)
+
+        # Get campaign settings
+        max_contacts = int(request.form.get('max_contacts', 20))
+        message_template = request.form.get('message_template', '')
+
+        # Store campaign data
+        campaign_data = {
+            'file_path': filepath,
+            'message_template': message_template,
+            'max_contacts': max_contacts,
+            'total_contacts': len(df),
+            'contacts': df.to_dict('records')[:max_contacts],
+            'campaign_id': str(uuid.uuid4()),
+            'stage': 'uploaded'  # Track campaign stage
+        }
+
+        session['current_campaign'] = campaign_data
+        flash(f'CSV uploaded successfully! {len(df)} contacts loaded.', 'success')
+        
+        return render_template('outreach.html',
+                             user=user,
+                             campaign_data=campaign_data,
+                             show_preview_option=True)
+    else:
+        flash('Please upload a valid CSV file!', 'error')
+        return render_template('outreach.html', user=user)
+
+def handle_campaign_preview(user):
+    """Handle campaign message preview generation"""
+    campaign_data = session.get('current_campaign')
+    if not campaign_data:
+        flash('No campaign data found. Please upload a CSV first.', 'error')
+        return render_template('outreach.html', user=user)
+    
+    # Check if client is active
+    client_id = str(user.id)
+    if not client_manager.is_client_active(client_id):
+        flash('Local client is not active. Please start your client application.', 'error')
+        return redirect(url_for('client_setup'))
+    
+    try:
+        # Generate preview messages
+        preview_count = min(5, len(campaign_data['contacts']))
+        
+        # Make API call to generate previews
+        preview_data = {
+            'campaign_id': campaign_data['campaign_id'],
+            'contacts': campaign_data['contacts'],
+            'message_template': campaign_data['message_template'],
+            'preview_count': preview_count
+        }
+        
+        # Generate previews (call internal API)
+        import google.generativeai as genai
+        genai.configure(api_key=user.gemini_api_key)
+        model = genai.GenerativeModel('gemini-1.5-flash')
+        
+        previews = []
+        for i, contact in enumerate(campaign_data['contacts'][:preview_count]):
+            name = contact.get('Name', 'Professional')
+            company = contact.get('Company', 'their company')
+            role = contact.get('Role', 'their role')
+            
+            prompt = f"""Create a personalized LinkedIn message for {name} at {company} ({role}). 
+Template: {campaign_data['message_template']}
+Keep under 280 characters, professional tone."""
+
+            try:
+                response = model.generate_content(prompt)
+                message = response.text.strip().strip('"\'[]')[:280]
+                previews.append({
+                    'contact': contact,
+                    'message': message,
+                    'character_count': len(message)
+                })
+            except Exception as e:
+                fallback = f"Hi {name.split()[0]}, I'd love to connect and learn about your work at {company}!"
+                previews.append({
+                    'contact': contact,
+                    'message': fallback,
+                    'character_count': len(fallback),
+                    'fallback': True
+                })
+        
+        # Update campaign stage
+        campaign_data['stage'] = 'previewed'
+        campaign_data['message_previews'] = previews
+        session['current_campaign'] = campaign_data
+        
+        flash(f'Generated {len(previews)} message previews!', 'success')
+        return render_template('outreach.html',
+                             user=user,
+                             campaign_data=campaign_data,
+                             show_start_option=True)
+        
+    except Exception as e:
+        flash(f'Preview generation failed: {str(e)}', 'error')
+        return render_template('outreach.html', user=user, campaign_data=campaign_data)
+
+def handle_campaign_start(user):
+    """Handle final campaign start after preview approval"""
+    campaign_data = session.get('current_campaign')
+    if not campaign_data or campaign_data.get('stage') != 'previewed':
+        flash('Please preview messages before starting the campaign.', 'warning')
+        return render_template('outreach.html', user=user)
+    
+    try:
+        # Create task for client
+        task = Task(
+            user=user,
+            task_type='outreach_campaign',
+            params={
+                'campaign_id': campaign_data['campaign_id'],
+                'campaign_data': campaign_data,
+                'user_config': {
+                    'linkedin_email': user.linkedin_email,
+                    'linkedin_password': user.linkedin_password,
+                    'gemini_api_key': user.gemini_api_key
+                }
+            },
+            status='queued'
+        )
+        task.save()
+        
+        # Clear session campaign data
+        session.pop('current_campaign', None)
+        
+        flash('Campaign started successfully! Check the dashboard for progress.', 'success')
+        return redirect(url_for('dashboard'))
+        
+    except Exception as e:
+        flash(f'Failed to start campaign: {str(e)}', 'error')
+        return render_template('outreach.html', user=user, campaign_data=campaign_data)
+
+
+@app.route('/api/update-campaign-message', methods=['POST'])
+@login_required
+def api_update_campaign_message():
+    """Update a specific message in the campaign preview"""
+    try:
+        data = request.json
+        contact_index = data.get('contact_index')
+        new_message = data.get('message', '').strip()
+        
+        campaign_data = session.get('current_campaign')
+        if not campaign_data or 'message_previews' not in campaign_data:
+            return jsonify({'error': 'No campaign preview found'}), 400
+        
+        if contact_index < 0 or contact_index >= len(campaign_data['message_previews']):
+            return jsonify({'error': 'Invalid contact index'}), 400
+        
+        if len(new_message) > 280:
+            return jsonify({'error': 'Message too long (max 280 characters)'}), 400
+        
+        # Update the message
+        campaign_data['message_previews'][contact_index]['message'] = new_message
+        campaign_data['message_previews'][contact_index]['character_count'] = len(new_message)
+        campaign_data['message_previews'][contact_index]['edited'] = True
+        
+        # Save back to session
+        session['current_campaign'] = campaign_data
+        
+        return jsonify({
+            'success': True,
+            'message': new_message,
+            'character_count': len(new_message)
+        })
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    
 @app.route('/start_collection', methods=['POST'])
 @login_required
 @linkedin_setup_required
@@ -525,17 +1086,18 @@ def start_campaign():
             return jsonify({'error': 'Campaign not found in session'}), 404
 
     try:
-        # Create the task and save it to the database
+        # --- This is the correct task queuing logic ---
         task = Task(
             user=user,
-            task_type='start_campaign',
+            task_type='outreach_campaign',
             params={
                 'campaign_id': campaign_data['campaign_id'],
+                'campaign_data': campaign_data,
                 'user_config': {
                     'linkedin_email': user.linkedin_email,
                     'linkedin_password': user.linkedin_password,
-                    'gemini_api_key': user.gemini_api_key},
-                'campaign_data': campaign_data
+                    'gemini_api_key': user.gemini_api_key
+                }
             },
             status='queued'
         )
@@ -543,7 +1105,6 @@ def start_campaign():
         
         logger.info(f"✅ Queued task {task.id} for user {user.email}")
         
-        # Give immediate feedback to the user on the dashboard
         return jsonify({
             'success': True, 
             'message': 'Campaign has been queued for the client.',
@@ -569,7 +1130,8 @@ def campaign_action():
     payload = {
         'campaign_id': campaign_id,
         'action': action,
-        'message': message
+        'message': message,
+        'contact_index': data.get('contact_index') # Pass index along
     }
 
     result = client_manager.send_campaign_action(str(user.id), payload)
@@ -599,17 +1161,9 @@ def contact_action():
 @app.route('/campaign_results/<campaign_id>')
 @login_required
 def get_campaign_results(campaign_id):
-    user = get_current_user()
-    client_url = client_manager.get_client_url(str(user.id))
-    try:
-        response = requests.get(f"{client_url}/campaign_status/{campaign_id}", timeout=5)
-        if response.status_code == 200:
-            return jsonify(response.json())
-        else:
-            # Fallback to local cache if client is down
-            return jsonify(campaign_results.get(campaign_id, {}))
-    except Exception:
-        return jsonify(campaign_results.get(campaign_id, {}))
+    # This now just returns the cached data, which is updated by the client
+    return jsonify(campaign_results.get(campaign_id, {}))
+
 
 @app.route('/campaign_status')
 @login_required
@@ -684,27 +1238,21 @@ def preview_message():
         
         # Get current campaign status from client
         user = get_current_user()
-        client_url = client_manager.get_client_url(str(user.id))
         
-        try:
-            response = requests.get(f"{client_url}/campaign_status/{campaign_id}", timeout=5)
-            if response.status_code == 200:
-                campaign_status = response.json()
+        # The client now reports progress directly, so we check our cache
+        campaign_status = campaign_results.get(campaign_id, {})
                 
-                if campaign_status.get('awaiting_confirmation'):
-                    current_contact_data = campaign_status.get('current_contact_preview', {})
-                    
-                    return jsonify({
-                        'success': True,
-                        'awaiting_confirmation': True,
-                        'contact': current_contact_data.get('contact', {}),
-                        'generated_message': current_contact_data.get('message', ''),
-                        'contact_index': current_contact_data.get('contact_index', 0)
-                    })
-                    
-        except Exception as e:
-            logger.error(f"Error getting campaign status: {e}")
+        if campaign_status.get('awaiting_confirmation'):
+            current_contact_data = campaign_status.get('current_contact_preview', {})
             
+            return jsonify({
+                'success': True,
+                'awaiting_confirmation': True,
+                'contact': current_contact_data.get('contact', {}),
+                'generated_message': current_contact_data.get('message', ''),
+                'contact_index': current_contact_data.get('contact_index', 0)
+            })
+                    
         return jsonify({'success': False, 'error': 'No preview available'})
         
     except Exception as e:
@@ -713,15 +1261,13 @@ def preview_message():
 @app.route('/api/get-tasks', methods=['POST'])
 def api_get_tasks():
     """
-    Client polling endpoint - enhanced for client manager
+    Client polling endpoint - enhanced with heartbeat
     """
     auth = request.headers.get('Authorization', '')
     api_key = None
     if auth.startswith('Bearer '):
         api_key = auth.replace('Bearer ', '').strip()
-    else:
-        api_key = (request.json or {}).get('api_key')
-
+    
     if not api_key:
         return jsonify({'error': 'Missing API key'}), 401
 
@@ -730,23 +1276,17 @@ def api_get_tasks():
     if not user:
         return jsonify({'error': 'Invalid API key'}), 403
 
-    # Get client ID from request
-    client_id = (request.json or {}).get('client_id')
-    if not client_id:
-        return jsonify({'error': 'Missing client ID'}), 400
-        
-    # Register/update client info
-    client_info = {
-        'last_seen': datetime.utcnow(),
-        'client_url': request.json.get('client_url'),
-        'user_agent': request.headers.get('User-Agent', 'Unknown')
-    }
-    client_manager.register_client(client_id, client_info)
+    user_id = str(user.id)
     
-    # Get tasks for this client
-    tasks = client_manager.get_client_tasks(client_id)
+    # Initialize the tasks list
+    tasks = []
     
-    # Also check database for queued tasks
+    # 1. Get real-time actions from client manager
+    real_time_actions = client_manager.get_client_campaign_actions(user_id)
+    if real_time_actions:
+        tasks.extend(real_time_actions)
+
+    # 2. Get new, long-running tasks from the database
     db_tasks = Task.objects(user=user, status='queued').order_by('+created_at')
     for task in db_tasks:
         tasks.append({
@@ -758,9 +1298,47 @@ def api_get_tasks():
         task.save()
     
     if not tasks:
-        return ('', 204)  # No tasks right now
-    
-    return jsonify({'tasks': tasks}), 200
+        return ('', 204)  # No tasks available
+    return jsonify({'tasks': tasks})
+
+@app.route('/api/report-task', methods=['POST'])
+def api_report_task():
+    """Client reports generated message/progress back to dashboard"""
+    try:
+        auth = request.headers.get('Authorization', '')
+        api_key = None
+        if auth.startswith('Bearer '):
+            api_key = auth.replace('Bearer ', '').strip()
+
+        if not api_key:
+            return jsonify({'error': 'Missing API key'}), 401
+
+        user = User.objects(gemini_api_key=api_key).first()
+        if not user:
+            return jsonify({'error': 'Invalid API key'}), 403
+
+        data = request.json or {}
+        task_id = data.get('task_id', str(uuid.uuid4()))
+        message = data.get('message', '')
+        contact = data.get('contact', {})
+
+        # Update automation status so UI can display edit/skip/send
+        automation_status['awaiting'] = True
+        automation_status['message'] = message
+        automation_status['current'] = {
+            'task_id': task_id,
+            'contact': contact,
+            'message': message,
+            'timestamp': datetime.utcnow().isoformat()
+        }
+
+        logger.info(f"✅ Stored task report from client for {contact.get('name')}")
+
+        return jsonify({'success': True, 'task_id': task_id})
+
+    except Exception as e:
+        logger.error(f"api_report_task error: {e}")
+        return jsonify({'error': str(e)}), 500
 
 # Add to app.py
 @app.route('/api/task-result', methods=['POST'])
@@ -793,41 +1371,13 @@ def api_task_result():
         return jsonify({'success': True})
         
     except Task.DoesNotExist:
+        # Check if it's a search result
+        if 'search_id' in data:
+             search_results_cache[data['search_id']] = result
+             return jsonify({'success': True})
         return jsonify({'error': 'Task not found'}), 404
     except Exception as e:
         logger.error(f"Error processing task result: {e}")
-        return jsonify({'error': str(e)}), 500
-
-# Add to app.py
-@app.route('/api/register-client', methods=['POST'])
-def api_register_client():
-    """Register a new client"""
-    try:
-        data = request.json
-        client_id = data.get('client_id')
-        client_url = data.get('client_url')
-        api_key = data.get('api_key')
-        
-        if not all([client_id, client_url, api_key]):
-            return jsonify({'error': 'Missing required parameters'}), 400
-            
-        # Validate API key
-        user = User.objects(gemini_api_key=api_key).first()
-        if not user:
-            return jsonify({'error': 'Invalid API key'}), 403
-            
-        # Register client
-        client_manager.register_client(client_id, {
-            'user_id': str(user.id),
-            'client_url': client_url,
-            'last_seen': datetime.utcnow(),
-            'user_agent': request.headers.get('User-Agent', 'Unknown')
-        })
-        
-        return jsonify({'success': True, 'message': 'Client registered successfully'})
-        
-    except Exception as e:
-        logger.error(f"Error registering client: {e}")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/confirm_message_action', methods=['POST'])
@@ -846,13 +1396,6 @@ def confirm_message_action():
             
         # Store user decision for the campaign worker
         user = get_current_user()
-        decision_data = {
-            'campaign_id': campaign_id,
-            'contact_index': contact_index,
-            'action': action,
-            'message': message,
-            'timestamp': time.time()
-        }
         
         # Send decision to local client
         payload = {
@@ -868,7 +1411,31 @@ def confirm_message_action():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
     
-
+@app.route('/api/dashboard-status')
+@login_required
+def api_dashboard_status():
+    """Get dashboard status including client connectivity"""
+    user = get_current_user()
+    client_id = str(user.id)
+    
+    client_status = client_manager.get_client_status(client_id)
+    
+    # Get task counts
+    queued_tasks = Task.objects(user=user, status='queued').count()
+    processing_tasks = Task.objects(user=user, status='processing').count()
+    
+    return jsonify({
+        'client': client_status,
+        'tasks': {
+            'queued': queued_tasks,
+            'processing': processing_tasks
+        },
+        'features_available': {
+            'ai_inbox': client_status['active'],
+            'outreach': client_status['active'],
+            'keyword_search': client_status['active']
+        }
+    })
 @app.route('/api/inbox_results', methods=['POST'])
 def api_inbox_results():
     """
@@ -878,9 +1445,7 @@ def api_inbox_results():
     api_key = None
     if auth.startswith('Bearer '):
         api_key = auth.replace('Bearer ', '').strip()
-    else:
-        api_key = (request.json or {}).get('api_key')
-
+    
     if not api_key:
         return jsonify({'error': 'Missing API key'}), 401
 
@@ -892,17 +1457,13 @@ def api_inbox_results():
     task_id = payload.get('process_id') or payload.get('task_id')
     results = payload.get('results')
 
+    if not task_id:
+        return jsonify({'error': 'Missing task_id or process_id'}), 400
 
-    # Store results — adapt to your DB/logic
-    try:
-        with open(f"reports/{task_id}.json", "w", encoding="utf-8") as f:
-            json.dump({
-                'user': str(user.id),
-                'results': results,
-                'received_at': datetime.utcnow().isoformat()
-            }, f, indent=2)
-    except Exception as e:
-        logger.error(f"Failed to save results for {task_id}: {e}")
+    # Store results in memory cache
+    inbox_results[task_id] = results
+    logger.info(f"✅ Stored inbox results for task {task_id}")
+
 
     return jsonify({'success': True}), 200
 
@@ -915,20 +1476,15 @@ def ai_inbox():
     
     if request.method == 'POST':
         try:
-            # Check if local client is available
-            if not client_manager.is_client_available(str(user.id)):
-                flash('Local client not available. Please start the local client application.', 'error')
-                return redirect(url_for('client_setup'))
-            
-            # Send request to local client
-            result = client_manager.send_inbox_processing_request(str(user.id))
-            
-            if result.get('success'):
-                flash('Inbox processing started on local client!', 'success')
-                session['current_inbox_process'] = result.get('process_id')
-            else:
-                flash(f'Inbox processing failed: {result.get("error")}', 'error')
-            
+            task=Task(
+                user=user,
+                task_type='process_inbox',
+                params={'process_id': str(uuid.uuid4())},
+                status='queued'
+            )
+            task.save()
+            flash('AI Inbox processing has been queued for the local client!', 'success')
+            logger.info(f"✅ Queued 'process_inbox' task {task.id} for user {user.email}")
             return redirect(url_for('ai_inbox'))
             
         except Exception as e:
@@ -937,8 +1493,14 @@ def ai_inbox():
     
     # GET request - show status
     return render_template('ai_inbox.html', 
-                         user=user,
-                         client_available=client_manager.is_client_available(str(user.id)))
+                         user=user)
+
+@app.route('/api/campaign-progress/<campaign_id>')
+@login_required
+def get_campaign_progress(campaign_id):
+    """Get campaign progress for frontend display"""
+    progress = campaign_results.get(campaign_id, {})
+    return jsonify(progress)
 
 @app.route('/inbox_results/<inbox_id>')
 @login_required
@@ -979,6 +1541,17 @@ def api_create_task():
 def receive_campaign_progress():
     """Receive campaign progress from local client"""
     try:
+        # Get API key from headers
+        auth_header = request.headers.get('Authorization', '')
+        if not auth_header.startswith('Bearer '):
+            return jsonify({'error': 'Missing or invalid Authorization header'}), 401
+            
+        api_key = auth_header.replace('Bearer ', '').strip()
+        user = User.objects(gemini_api_key=api_key).first()
+        
+        if not user:
+            return jsonify({'error': 'Invalid API key'}), 403
+
         data = request.json
         campaign_id = data.get('campaign_id')
         progress = data.get('progress', {})
@@ -986,6 +1559,9 @@ def receive_campaign_progress():
         
         # Store progress in campaign_results
         campaign_results[campaign_id] = progress
+        
+        # Log the received progress for debugging
+        logger.info(f"Received progress for campaign {campaign_id}: {progress}")
         
         if is_final:
             logger.info(f"✅ Campaign {campaign_id} completed")

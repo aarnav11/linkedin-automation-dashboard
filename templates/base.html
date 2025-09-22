@@ -9,7 +9,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     <style>
-        /* Add the navbar styles from dashboard to ensure consistency */
+        /* Updated navbar styles for extreme left/right positioning */
         .navbar {
             background-color: var(--color-surface);
             padding: 1rem 0;
@@ -18,8 +18,7 @@
         }
 
         .nav-container {
-            max-width: 1200px;
-            margin: 0 auto;
+            width: 100%;
             padding: 0 2rem;
             display: flex;
             justify-content: space-between;
@@ -32,6 +31,7 @@
             gap: 0.75rem;
             text-decoration: none;
             color: var(--color-text);
+            flex-shrink: 0;
         }
 
         .logo-img {
@@ -94,22 +94,28 @@
             border-radius: 2rem;
             cursor: pointer;
             transition: all 0.2s ease;
+            color: var(--color-text);
         }
 
         .profile-trigger:hover {
             background-color: var(--color-background);
+            border-color: var(--color-primary);
+            box-shadow: 0 2px 8px rgba(10, 102, 194, 0.15);
         }
 
         .profile-avatar {
             width: 32px;
             height: 32px;
             border-radius: 50%;
-            background: linear-gradient(135deg, var(--color-primary), var(--color-secondary));
+            background: linear-gradient(135deg, #0a66c2, #f59e0b);
             display: flex;
             align-items: center;
             justify-content: center;
             color: white;
             font-weight: 600;
+            font-size: 14px;
+            box-shadow: 0 2px 8px rgba(10, 102, 194, 0.3);
+            border: 2px solid #ffffff;
         }
 
         .dropdown-menu {
