@@ -90,40 +90,36 @@ class ClientManager:
     def __init__(self):
         self.clients = {}  # client_uuid -> client info
         self.user_to_client = {} # Maps user_id -> client_uuid
-        self.client_tasks = defaultdict(list)
-        self.active_clients = defaultdict(dict)  # Add this line
-    
+        # CHANGE: This is now the primary queue for real-time actions, keyed by user_id
+        self.user_tasks = defaultdict(list)
+        self.active_clients = defaultdict(dict)
+
     def register_client(self, client_id, client_info):
+        """DEPRECATED but kept for potential future monitoring features."""
         self.clients[client_id] = client_info
-        # Create the crucial mapping from user_id to the client's unique ID
         user_id = client_info.get('user_id')
         if user_id:
             self.user_to_client[user_id] = client_id
             logger.info(f"Mapped user {user_id} to client {client_id}")
 
-    def is_client_available(self, client_id):
-        return client_id in self.clients
-    
     def is_client_active(self, client_id):
         """Check if client is active (recently seen)"""
         if client_id not in self.clients:
             return False
         
-        client_info = self.clients[client_id]
+        client_info = self.clients.get(client_id, {})
         last_seen = client_info.get('last_seen')
         if not last_seen:
             return False
         
         try:
-            from datetime import datetime, timedelta
+            from datetime import datetime
             if isinstance(last_seen, str):
                 last_seen = datetime.fromisoformat(last_seen.replace('Z', '+00:00'))
-            
-            # Consider active if seen within last 2 minutes
             return (datetime.utcnow() - last_seen).total_seconds() < 120
         except:
             return False
-    
+
     def get_client_status(self, client_id):
         """Get comprehensive client status"""
         is_active = self.is_client_active(client_id)
@@ -135,87 +131,41 @@ class ClientManager:
             'last_seen': client_info.get('last_seen'),
             'client_info': client_info
         }
-    
-    def get_client_url(self, client_id):
-        if client_id in self.clients:
-            return self.clients[client_id].get('client_url')
-        return None
-    
-    def send_task_to_client(self, client_id, task_data):
-        if client_id in self.clients:
-            self.client_tasks[client_id].append(task_data)
-            return {'success': True}
-        return {'success': False, 'error': 'Client not registered'}
-    
+
     def send_campaign_action(self, user_id, action_data):
-        """Finds the correct client UUID from the user_id and queues an action."""
-        client_id = self.user_to_client.get(user_id) or user_id # Look up the client's unique ID
+        """
+        NEW: Queues a real-time action for a specific user.
+        Any client belonging to this user can pick it up.
+        """
         task_data = {
             'id': f"action_{uuid.uuid4()}",
             'type': 'campaign_action',
             'params': action_data
         }
-        self.client_tasks[client_id].append(task_data)
-        logger.info(f"✅ Queued action '{action_data.get('action')}' for user {user_id} (client key: {client_id})")
-        return {'success': True, 'message': 'Action queued for client.'}
+        self.user_tasks[user_id].append(task_data)
+        logger.info(f"✅ Queued action '{action_data.get('action')}' for user {user_id}")
+        return {'success': True, 'message': 'Action queued for user.'}
 
-
-    def get_client_tasks(self, client_id):
-        if client_id in self.client_tasks:
-            tasks = self.client_tasks[client_id]
-            self.client_tasks[client_id] = []  # Clear tasks after retrieving
+    def get_user_tasks(self, user_id):
+        """
+        NEW: Retrieves and clears all pending real-time actions for a user.
+        """
+        if user_id in self.user_tasks:
+            tasks = self.user_tasks[user_id]
+            self.user_tasks[user_id] = []  # Clear tasks after retrieving
             return tasks
         return []
 
-    def update_client_heartbeat(self, user_id, client_id=None, client_info=None):
-        """Update last heartbeat for a client instance."""
-        # If client_id not provided, use user_id as client_id
-        if client_id is None:
-            client_id = user_id
-            
-        # Update client info with heartbeat
-        if client_id not in self.clients:
-            self.clients[client_id] = {}
-            
-        self.clients[client_id].update({
+    def update_client_heartbeat(self, user_id, client_id, client_info=None):
+        """Update last heartbeat for a client instance for monitoring."""
+        self.clients[client_id] = {
             "last_seen": datetime.utcnow(),
             "user_id": user_id,
             "client_info": client_info or {}
-        })
-        
-        # Ensure user mapping exists
-        self.user_to_client[user_id] = client_id
-        
-        return True
-    
-    def get_client_campaign_actions(self, user_id):
-        """Get queued campaign actions for a user"""
-        client_id = self.user_to_client.get(user_id)
-        if client_id:
-            return self.get_client_tasks(client_id)
-        return []
-    
-    def send_collection_request(self, user_id, collection_params):
-        """Send profile collection request to client"""
-        task_data = {
-            'id': f"collection_{uuid.uuid4()}",
-            'type': 'collect_profiles',
-            'params': {
-                'user_config': {
-                    'linkedin_email': '',  # Will be filled by client
-                    'linkedin_password': '',
-                    'gemini_api_key': ''
-                },
-                'collection_params': collection_params
-            }
         }
-        
-        client_id = self.user_to_client.get(user_id)
-        if client_id and client_id in self.clients:
-            self.client_tasks[client_id].append(task_data)
-            return {'success': True}
-        return {'success': False, 'error': 'Client not available'}
-
+        # This mapping is now just for monitoring purposes
+        self.user_to_client[user_id] = client_id
+        return True
 # Initialize the client manager
 client_manager = ClientManager()
 
@@ -246,12 +196,10 @@ def api_client_status():
 # Add this route for client heartbeat/ping
 @app.route('/api/client-ping', methods=['POST'])
 def api_client_ping():
-    """Client heartbeat endpoint"""
+    """Client heartbeat endpoint. Also serves real-time actions."""
     try:
         auth = request.headers.get('Authorization', '')
-        api_key = None
-        if auth.startswith('Bearer '):
-            api_key = auth.replace('Bearer ', '').strip()
+        api_key = auth.replace('Bearer ', '').strip() if auth.startswith('Bearer ') else None
         
         if not api_key:
             return jsonify({'error': 'Missing API key'}), 401
@@ -262,17 +210,20 @@ def api_client_ping():
 
         user_id = str(user.id)
         
-        # Get client_id and info from the POST request body
-        client_id = request.json.get('client_id', user_id) if request.json else user_id
-        client_info = request.json.get('client_info', {}) if request.json else {}
+        data = request.json or {}
+        client_id = data.get('client_id')
+        client_info = data.get('client_info', {})
         
-        # Update client heartbeat with proper parameters
+        if not client_id:
+            return jsonify({'error': 'Missing client_id in request body'}), 400
+        
+        # Update client status for monitoring
         client_manager.update_client_heartbeat(user_id, client_id, client_info)
         
-        #
-        # THIS IS THE KEY CHANGE: Get and clear queued actions for this user
-        #
-        actions = client_manager.get_client_campaign_actions(user_id)
+        # KEY CHANGE: Get and clear queued real-time actions for this specific user
+        actions = client_manager.get_user_tasks(user_id)
+        if actions:
+            logger.info(f"Delivering {len(actions)} actions to client for user {user_id}")
 
         return jsonify({
             'success': True, 
@@ -811,12 +762,6 @@ def handle_campaign_preview(user):
         flash('No campaign data found. Please upload a CSV first.', 'error')
         return render_template('outreach.html', user=user)
     
-    # Check if client is active
-    client_id = str(user.id)
-    if not client_manager.is_client_active(client_id):
-        flash('Local client is not active. Please start your client application.', 'error')
-        return redirect(url_for('client_setup'))
-    
     try:
         # Generate preview messages
         preview_count = min(5, len(campaign_data['contacts']))
@@ -961,10 +906,7 @@ def start_collection():
             flash('Please provide a valid LinkedIn Sales Navigator search URL.', 'error')
             return redirect(url_for('outreach'))
 
-        if not client_manager.is_client_available(str(user.id)):
-            flash('Local client is not running. Please start it to collect profiles.', 'error')
-            return redirect(url_for('client_setup'))
-
+                # Always queue a collection task on the server side (do not require local client)
         collection_id = str(uuid.uuid4())
         collection_params = {
             'collection_id': collection_id,
@@ -972,25 +914,36 @@ def start_collection():
             'max_profiles': max_profiles
         }
         
-        # Initialize cache for this collection
+        # Initialize cache for this collection (UI can poll this)
         collection_results_cache[collection_id] = {
-            "status": "starting",
+            "status": "queued",
             "progress": 0,
             "total": max_profiles,
             "profiles": [],
-            "start_time": datetime.now().isoformat()
+            "start_time": datetime.now().isoformat(),
+            "note": "Queued for processing; will begin when a worker/client picks the task."
         }
 
-        result = client_manager.send_collection_request(str(user.id), collection_params)
+        # Create a DB task that worker/clients will pick up
+        task = Task(
+            user=user,
+            task_type='collect_profiles',
+            params={
+                'collection_id': collection_id,
+                'collection_params': collection_params,
+                'user_config': {
+                    'linkedin_email': user.linkedin_email,
+                    'linkedin_password': user.linkedin_password,
+                    'gemini_api_key': user.gemini_api_key
+                }
+            },
+            status='queued'
+        )
+        task.save()
 
-        if result.get('success'):
-            flash(f'Profile collection started for up to {max_profiles} profiles. You will be redirected to the results page.', 'success')
-            session['current_collection_id'] = collection_id
-            return redirect(url_for('campaign_builder', collection_id=collection_id))
-        else:
-            flash(f"Failed to start collection: {result.get('error', 'Unknown error')}", 'error')
-            collection_results_cache.pop(collection_id, None) # Clean up
-            return redirect(url_for('outreach'))
+        flash(f'Profile collection has been queued for up to {max_profiles} profiles. You will be redirected to the results page.', 'success')
+        session['current_collection_id'] = collection_id
+        return redirect(url_for('campaign_builder', collection_id=collection_id))
 
     except Exception as e:
         flash(f'Error starting collection: {e}', 'error')
@@ -1261,32 +1214,21 @@ def preview_message():
 @app.route('/api/get-tasks', methods=['POST'])
 def api_get_tasks():
     """
-    Client polling endpoint - enhanced with heartbeat
+    Client polling endpoint - serves only long-running tasks from the database.
     """
     auth = request.headers.get('Authorization', '')
-    api_key = None
-    if auth.startswith('Bearer '):
-        api_key = auth.replace('Bearer ', '').strip()
+    api_key = auth.replace('Bearer ', '').strip() if auth.startswith('Bearer ') else None
     
     if not api_key:
         return jsonify({'error': 'Missing API key'}), 401
 
-    # Validate API key and get user
     user = User.objects(gemini_api_key=api_key).first()
     if not user:
         return jsonify({'error': 'Invalid API key'}), 403
 
-    user_id = str(user.id)
-    
-    # Initialize the tasks list
     tasks = []
     
-    # 1. Get real-time actions from client manager
-    real_time_actions = client_manager.get_client_campaign_actions(user_id)
-    if real_time_actions:
-        tasks.extend(real_time_actions)
-
-    # 2. Get new, long-running tasks from the database
+    # Get new, long-running tasks from the database for this user ONLY
     db_tasks = Task.objects(user=user, status='queued').order_by('+created_at')
     for task in db_tasks:
         tasks.append({
@@ -1298,7 +1240,8 @@ def api_get_tasks():
         task.save()
     
     if not tasks:
-        return ('', 204)  # No tasks available
+        return ('', 204)  # No Content - No tasks available
+    
     return jsonify({'tasks': tasks})
 
 @app.route('/api/report-task', methods=['POST'])
@@ -1424,18 +1367,32 @@ def api_dashboard_status():
     queued_tasks = Task.objects(user=user, status='queued').count()
     processing_tasks = Task.objects(user=user, status='processing').count()
     
+    user_has_setup = False
+    try:
+        user_has_setup = user.has_linkedin_setup()
+    except Exception:
+        # Fallback: check necessary fields
+        user_has_setup = all([
+            getattr(user, 'linkedin_email', None),
+            getattr(user, 'linkedin_password', None),
+            getattr(user, 'gemini_api_key', None)
+        ])
+
+    features_available = {
+        'ai_inbox': user_has_setup,
+        'outreach': user_has_setup,
+        'keyword_search': user_has_setup
+    }
+
     return jsonify({
         'client': client_status,
         'tasks': {
             'queued': queued_tasks,
             'processing': processing_tasks
         },
-        'features_available': {
-            'ai_inbox': client_status['active'],
-            'outreach': client_status['active'],
-            'keyword_search': client_status['active']
-        }
+        'features_available': features_available
     })
+
 @app.route('/api/inbox_results', methods=['POST'])
 def api_inbox_results():
     """

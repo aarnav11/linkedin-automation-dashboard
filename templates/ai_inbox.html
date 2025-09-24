@@ -10,16 +10,6 @@
                     <h4><i class="fas fa-robot"></i> AI Inbox Processing</h4>
                 </div>
                 <div class="card-body">
-                    <div id="clientStatusAlert" class="alert alert-warning" style="display: none;">
-                        <i class="fas fa-exclamation-triangle"></i>
-                        <div>
-                            <strong>Local Client Required:</strong> 
-                            Please <a href="{{ url_for('client_setup') }}">setup your local client</a> before processing your inbox.
-                        </div>
-                        <button type="button" class="btn btn-sm btn-secondary" onclick="checkClientStatus()" style="margin-left: auto;">
-                            <i class="fas fa-sync-alt"></i> Check
-                        </button>
-                    </div>
 
                     <p class="text-muted">Process LinkedIn messages with AI-generated intelligent responses.</p>
                     
@@ -96,33 +86,12 @@ let statusInterval = null;
 
 // Check client status on page load
 document.addEventListener('DOMContentLoaded', function() {
-    checkClientStatus();
-    
     {% if current_inbox_process %}
     currentProcessId = "{{ current_inbox_process }}";
     document.getElementById('processingStatus').style.display = 'block';
     startStatusMonitoring();
     {% endif %}
 });
-
-function checkClientStatus() {
-    fetch('/check_client_status')
-        .then(response => response.json())
-        .then(data => {
-            if (!data.available) {
-                document.getElementById('clientStatusAlert').style.display = 'flex';
-                document.getElementById('processBtn').disabled = true;
-            } else {
-                document.getElementById('clientStatusAlert').style.display = 'none';
-                document.getElementById('processBtn').disabled = false;
-            }
-        })
-        .catch(error => {
-            console.error('Error checking client status:', error);
-            document.getElementById('clientStatusAlert').style.display = 'flex';
-            document.getElementById('processBtn').disabled = true;
-        });
-}
 
 function startStatusMonitoring() {
     if (!currentProcessId) return;
