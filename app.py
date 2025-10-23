@@ -41,8 +41,8 @@ automation_status = {
 }
 campaign_controls = defaultdict(lambda: {'stop': False, 'action': None})
 
-app = Flask(__name__)
-app.secret_key = os.environ.get('SECRET_KEY', 'your-secret-key-here-change-this-in-production')
+application = Flask(__name__)
+application.secret_key = os.environ.get('SECRET_KEY', 'your-secret-key-here-change-this-in-production')
 
 # MongoDB Atlas connection
 MONGODB_URI = os.environ.get("MONGODB_URI", "mongodb+srv://Arnav-admin:YourActualPassword@linkedin-auto-users.qt8v57k.mongodb.net/?retryWrites=true&w=majority&appName=Linkedin-auto-users")
@@ -50,11 +50,11 @@ connect(host=MONGODB_URI)
 
 # File upload configuration
 basedir = os.path.abspath(os.path.dirname(__file__))
-app.config['UPLOAD_FOLDER'] = os.path.join(basedir, 'uploads')
-app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
+application.config['UPLOAD_FOLDER'] = os.path.join(basedir, 'uploads')
+application.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
 
 # Ensure upload folder exists
-os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+os.makedirs(application.config['UPLOAD_FOLDER'], exist_ok=True)
 
 def login_required(f):
     """Decorator to require login for protected routes"""
@@ -169,7 +169,7 @@ class ClientManager:
 # Initialize the client manager
 client_manager = ClientManager()
 
-@app.route('/client_setup')
+@application.route('/client_setup')
 @login_required
 def client_setup():
     """Show client setup instructions with real-time status"""
@@ -185,7 +185,31 @@ def client_setup():
                          client_status=client_status)
 
 # Add this new route for client status checking
-@app.route('/api/client-status')
+
+@application.route('/profile')
+@login_required
+def profile():
+    user = get_current_user()
+    if not user:
+        flash('User not found.', 'error')
+        return redirect(url_for('login'))
+        
+    # Prepare user data dictionary, ensuring sensitive data like password hash isn't passed
+    user_data = {
+        'full_name': user.get_full_name(),
+        'email': user.email,
+        'first_name': user.first_name,
+        'last_name': user.last_name,
+        'created_at': user.created_at.strftime('%B %d, %Y') if user.created_at else 'N/A',
+        'linkedin_email': user.linkedin_email or 'Not Set',
+        'has_linkedin_setup': user.has_linkedin_setup(),
+        'has_gemini_key': bool(user.gemini_api_key) # Just check if the key exists, don't display it
+    }
+    
+    return render_template('profile.html', user=user, user_data=user_data)
+
+
+@application.route('/api/client-status')
 @login_required
 def api_client_status():
     """Get real-time client status for the logged-in user"""
@@ -193,7 +217,7 @@ def api_client_status():
     status = client_manager.get_client_status(str(user.id))
     return jsonify(status)
 
-@app.route('/')
+@application.route('/')
 def landing():
     # If user is already logged in, redirect to dashboard
     if 'user_id' in session:
@@ -202,7 +226,7 @@ def landing():
     # Show landing page for non-logged-in users
     return render_template('landing.html')
 
-@app.route('/register', methods=['GET', 'POST'])
+@application.route('/register', methods=['GET', 'POST'])
 def register():
     if request.method == 'POST':
         try:
@@ -257,7 +281,7 @@ def register():
     
     return render_template('register.html')
 
-@app.route('/login', methods=['GET', 'POST'])
+@application.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
         try:
@@ -300,7 +324,7 @@ def login():
     
     return render_template('login.html')
 
-@app.route('/dashboard')
+@application.route('/dashboard')
 @login_required
 def dashboard():
     user = get_current_user()
@@ -317,14 +341,14 @@ def dashboard():
                          user=user,
                          stats=stats)
 
-@app.route('/get-started')
+@application.route('/get-started')
 def get_started():
     """Redirect to registration page"""
     if 'user_id' in session:
         return redirect(url_for('dashboard'))
     return redirect(url_for('register'))
 
-@app.route('/demo')
+@application.route('/demo')
 def demo():
     """Demo page or redirect to login"""
     if 'user_id' in session:
@@ -332,28 +356,22 @@ def demo():
     flash('Please sign up for a free account to try the demo!', 'info')
     return redirect(url_for('register'))
 
-@app.route('/pricing')
+@application.route('/pricing')
 def pricing():
     """Pricing page"""
     return render_template('pricing.html')
 
-@app.route('/features')
+@application.route('/features')
 def features():
     """Features page"""
     return render_template('features.html')
 
-@app.route('/contact')
+@application.route('/contact')
 def contact():
     """Contact page"""
     return render_template('contact.html')
 
-@app.route('/profile')
-@login_required
-def profile():
-    user = get_current_user()
-    return render_template('profile.html', user=user)
-
-@app.route('/settings', methods=['GET', 'POST'])
+@application.route('/settings', methods=['GET', 'POST'])
 @login_required
 def settings():
     user = get_current_user()
@@ -385,7 +403,7 @@ def settings():
 
     return render_template('settings.html', user=user)
 
-@app.route('/ai_handler', methods=['GET', 'POST'])
+@application.route('/ai_handler', methods=['GET', 'POST'])
 @login_required
 @linkedin_setup_required
 def ai_handler():
@@ -420,7 +438,7 @@ def ai_handler():
             return render_template('ai_handler.html', user=user)
     
     return render_template('ai_handler.html', user=user)
-@app.route('/api/generate-message', methods=['POST'])
+@application.route('/api/generate-message', methods=['POST'])
 @login_required
 @linkedin_setup_required
 def api_generate_message():
@@ -512,7 +530,7 @@ Generate only the message text, no labels or formatting."""
         return jsonify({'error': str(e)}), 500
 
 # Add route for batch message preview
-@app.route('/api/preview-campaign-messages', methods=['POST'])
+@application.route('/api/preview-campaign-messages', methods=['POST'])
 @login_required
 @linkedin_setup_required
 def api_preview_campaign_messages():
@@ -595,7 +613,7 @@ Keep under 280 characters, use first name only, be professional and genuine."""
         return jsonify({'error': str(e)}), 500
     
     
-@app.route('/outreach', methods=['GET', 'POST'])
+@application.route('/outreach', methods=['GET', 'POST'])
 @login_required
 @linkedin_setup_required  
 def outreach():
@@ -633,7 +651,7 @@ def handle_file_upload(user):
 
     if file and file.filename.lower().endswith('.csv'):
         filename = secure_filename(file.filename)
-        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        filepath = os.path.join(application.config['UPLOAD_FOLDER'], filename)
         file.save(filepath)
 
         # Process CSV file
@@ -774,7 +792,7 @@ def handle_campaign_start(user):
         return render_template('outreach.html', user=user, campaign_data=campaign_data)
 
 
-@app.route('/api/update-campaign-message', methods=['POST'])
+@application.route('/api/update-campaign-message', methods=['POST'])
 @login_required
 def api_update_campaign_message():
     """Update a specific message in the campaign preview"""
@@ -810,7 +828,7 @@ def api_update_campaign_message():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
     
-@app.route('/start_collection', methods=['POST'])
+@application.route('/start_collection', methods=['POST'])
 @login_required
 @linkedin_setup_required
 def start_collection():
@@ -867,7 +885,7 @@ def start_collection():
         return redirect(url_for('outreach'))
 
 # NEW: Route to display collected profiles and build a campaign
-@app.route('/campaign_builder/<collection_id>')
+@application.route('/campaign_builder/<collection_id>')
 @login_required
 def campaign_builder(collection_id):
     user = get_current_user()
@@ -882,14 +900,14 @@ def campaign_builder(collection_id):
                            collection_data=collection_data)
 
 # NEW: API endpoint to get collection status
-@app.route('/collection_status/<collection_id>')
+@application.route('/collection_status/<collection_id>')
 @login_required
 def collection_status(collection_id):
     return jsonify(collection_results_cache.get(collection_id, {'status': 'not_found'}))
 
 
 # NEW: Route to create a campaign from selected profiles
-@app.route('/create_campaign_from_selection', methods=['POST'])
+@application.route('/create_campaign_from_selection', methods=['POST'])
 @login_required
 def create_campaign_from_selection():
     try:
@@ -945,7 +963,7 @@ def create_campaign_from_selection():
         flash(f'Error creating campaign: {e}', 'error')
         return redirect(url_for('outreach'))
 
-@app.route('/start_campaign', methods=['POST'])
+@application.route('/start_campaign', methods=['POST'])
 @login_required
 def start_campaign():
     user = get_current_user()
@@ -985,7 +1003,7 @@ def start_campaign():
         logger.error(f"❌ Error queuing campaign task: {str(e)}")
         return jsonify({'error': str(e)}), 500
 
-@app.route('/campaign_action', methods=['POST'])
+@application.route('/campaign_action', methods=['POST'])
 @login_required
 def campaign_action():
     user = get_current_user()
@@ -1007,7 +1025,7 @@ def campaign_action():
     result = client_manager.send_campaign_action(str(user.id), payload)
     return jsonify(result)
 
-@app.route('/stop_campaign', methods=['POST'])
+@application.route('/stop_campaign', methods=['POST'])
 @login_required
 def stop_campaign():
     cid = request.json.get('campaign_id')
@@ -1017,7 +1035,7 @@ def stop_campaign():
     automation_status['message'] = 'Stopping campaign...'
     return jsonify({'success': True})
 
-@app.route('/contact_action', methods=['POST'])
+@application.route('/contact_action', methods=['POST'])
 @login_required
 def contact_action():
     data = request.json
@@ -1028,21 +1046,21 @@ def contact_action():
     campaign_controls[cid]['action'] = act
     return jsonify({'success': True})
 
-@app.route('/campaign_results/<campaign_id>')
+@application.route('/campaign_results/<campaign_id>')
 @login_required
 def get_campaign_results(campaign_id):
     # This now just returns the cached data, which is updated by the client
     return jsonify(campaign_results.get(campaign_id, {}))
 
 
-@app.route('/campaign_status')
+@application.route('/campaign_status')
 @login_required
 def campaign_status():
     return jsonify(automation_status)
 
 # In app.py, find and REPLACE the keyword_search function
 
-@app.route('/keyword_search', methods=['GET', 'POST'])
+@application.route('/keyword_search', methods=['GET', 'POST'])
 @login_required
 @linkedin_setup_required
 def keyword_search():
@@ -1092,13 +1110,13 @@ def keyword_search():
     # GET request - show form
     return render_template('keyword_search.html', user=user)
 
-@app.route('/search_results/<search_id>')
+@application.route('/search_results/<search_id>')
 @login_required
 def get_search_results(search_id):
     results = search_results_cache.get(search_id, {})
     return jsonify(results)
 
-@app.route('/preview_message', methods=['POST'])
+@application.route('/preview_message', methods=['POST'])
 @login_required
 def preview_message():
     """Preview message before sending in campaign - ENHANCED"""
@@ -1128,7 +1146,7 @@ def preview_message():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
     
-@app.route('/api/get-tasks', methods=['POST'])
+@application.route('/api/get-tasks', methods=['POST'])
 def api_get_tasks():
     """
     Client polling endpoint - serves only long-running tasks from the database.
@@ -1161,7 +1179,7 @@ def api_get_tasks():
     
     return jsonify({'tasks': tasks})
 
-@app.route('/api/report-task', methods=['POST'])
+@application.route('/api/report-task', methods=['POST'])
 def api_report_task():
     """Client reports generated message/progress back to dashboard"""
     try:
@@ -1201,7 +1219,7 @@ def api_report_task():
         return jsonify({'error': str(e)}), 500
 
 # Add to app.py
-@app.route('/api/task-result', methods=['POST'])
+@application.route('/api/task-result', methods=['POST'])
 def api_task_result():
     """Receive task results from clients"""
     try:
@@ -1240,7 +1258,7 @@ def api_task_result():
         logger.error(f"Error processing task result: {e}")
         return jsonify({'error': str(e)}), 500
 
-@app.route('/confirm_message_action', methods=['POST'])
+@application.route('/confirm_message_action', methods=['POST'])
 @login_required
 def confirm_message_action():
     """Handle user decision on message (send/skip/edit)"""
@@ -1271,7 +1289,7 @@ def confirm_message_action():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
     
-@app.route('/api/dashboard-status')
+@application.route('/api/dashboard-status')
 @login_required
 def api_dashboard_status():
     """Get dashboard status including client connectivity"""
@@ -1310,7 +1328,7 @@ def api_dashboard_status():
         'features_available': features_available
     })
 
-@app.route('/api/inbox_results', methods=['POST'])
+@application.route('/api/inbox_results', methods=['POST'])
 def api_inbox_results():
     """
     Clients report task results here.
@@ -1342,7 +1360,7 @@ def api_inbox_results():
     return jsonify({'success': True}), 200
 
 
-@app.route('/ai_inbox', methods=['GET', 'POST'])
+@application.route('/ai_inbox', methods=['GET', 'POST'])
 @login_required
 @linkedin_setup_required
 def ai_inbox():
@@ -1378,7 +1396,7 @@ def ai_inbox():
 inbox_preview_states = {}
 
 # In app.py - Replace the @app.route('/api/inbox_preview/<process_id>') GET endpoint
-@app.route('/api/inbox_preview/<session_id>', methods=['GET'])
+@application.route('/api/inbox_preview/<session_id>', methods=['GET'])
 @login_required
 def get_inbox_preview_status(session_id):
     """
@@ -1392,7 +1410,7 @@ def get_inbox_preview_status(session_id):
         # No preview is waiting for this session
         return jsonify({'awaiting_confirmation': False})
     
-@app.route('/api/inbox_preview/process/<process_id>', methods=['GET'])
+@application.route('/api/inbox_preview/process/<process_id>', methods=['GET'])
 def get_inbox_preview_by_process(process_id):
     """Get current inbox preview state for a process (fallback route)"""
     # This searches through all sessions to find matching process_id
@@ -1402,7 +1420,7 @@ def get_inbox_preview_by_process(process_id):
     
     return jsonify({'awaiting_confirmation': False})
 
-@app.route('/api/inbox_action', methods=['POST'])
+@application.route('/api/inbox_action', methods=['POST'])
 @login_required
 def inbox_action():
     """
@@ -1447,7 +1465,7 @@ def inbox_action():
 
 inbox_preview_states = {}
 
-@app.route('/api/inbox_preview', methods=['POST'])
+@application.route('/api/inbox_preview', methods=['POST'])
 def api_inbox_preview():
     """
     Receives an inbox preview from a client and stores it server-side.
@@ -1484,7 +1502,7 @@ def api_inbox_preview():
         logger.error(f"Error storing inbox preview: {e}", exc_info=True)
         return jsonify({'error': str(e)}), 500
 
-@app.route('/inbox_results/<process_id>', methods=['GET'])
+@application.route('/inbox_results/<process_id>', methods=['GET'])
 def get_inbox_results_by_process(process_id):
     """Get inbox processing results"""
     try:
@@ -1504,7 +1522,7 @@ def get_inbox_results_by_process(process_id):
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-@app.route('/inbox_results/<process_id>')
+@application.route('/inbox_results/<process_id>')
 @login_required
 def get_inbox_results(process_id):
     """Get inbox results for a specific process - FIXED VERSION"""
@@ -1523,7 +1541,7 @@ def get_inbox_results(process_id):
     return jsonify(results)
 
 # Update the client ping endpoint to include inbox actions
-@app.route('/api/client-ping', methods=['POST'])
+@application.route('/api/client-ping', methods=['POST'])
 def api_client_ping():
     """Client heartbeat endpoint with inbox action support"""
     try:
@@ -1584,14 +1602,14 @@ def api_client_ping():
         logger.error(f"Client ping error: {e}")
         return jsonify({'error': str(e)}), 500
     
-@app.route('/api/campaign-progress/<campaign_id>')
+@application.route('/api/campaign-progress/<campaign_id>')
 @login_required
 def get_campaign_progress(campaign_id):
     """Get campaign progress for frontend display"""
     progress = campaign_results.get(campaign_id, {})
     return jsonify(progress)
     
-@app.route('/api/create-task', methods=['POST'])
+@application.route('/api/create-task', methods=['POST'])
 def api_create_task():
     """
     Dashboard/admin can create tasks for a user.
@@ -1620,7 +1638,7 @@ def api_create_task():
 
 
 
-@app.route('/api/campaign_progress', methods=['POST'])
+@application.route('/api/campaign_progress', methods=['POST'])
 def receive_campaign_progress():
     """Receive campaign progress from local client"""
     try:
@@ -1655,7 +1673,7 @@ def receive_campaign_progress():
         logger.error(f"❌ Error receiving campaign progress: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
-@app.route('/api/search_results', methods=['POST'])
+@application.route('/api/search_results', methods=['POST'])
 def receive_search_results():
     """Receive search results from local client"""
     try:
@@ -1677,7 +1695,7 @@ def receive_search_results():
         logger.error(f"❌ Error receiving search results: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
-@app.route('/logout')
+@application.route('/logout')
 @login_required
 def logout():
     user_name = session.get('user_name', '')
@@ -1686,17 +1704,17 @@ def logout():
     flash(f'Goodbye, {user_name}!', 'info')
     return redirect(url_for('login'))
 
-@app.errorhandler(404)
+@application.errorhandler(404)
 def not_found_error(error):
     return render_template('404.html'), 404
 
-@app.errorhandler(500)
+@application.errorhandler(500)
 def internal_error(error):
     return render_template('500.html'), 500
 
 if __name__ == '__main__':
     print(f"Starting Flask app...")
     print(f"Project directory: {basedir}")
-    print(f"Upload folder: {app.config['UPLOAD_FOLDER']}")
-    
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    print(f"Upload folder: {application.config['UPLOAD_FOLDER']}")
+
+    application.run(debug=True, host='0.0.0.0', port=5000)

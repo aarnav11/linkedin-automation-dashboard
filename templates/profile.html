@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+
+{% block title %}My Profile - {{ super() }}{% endblock %}
+
+{% block content %}
+<div class="container" style="max-width: 700px; margin: 2rem auto;">
+    <div class="card shadow-sm mb-4">
+        <div class="card-header bg-light d-flex justify-content-between align-items-center">
+            <h4 class="mb-0"><i class="fas fa-user-circle me-2 text-primary"></i>My Profile</h4>
+            <a href="{{ url_for('settings') }}" class="btn btn-sm btn-outline-primary">
+                <i class="fas fa-edit me-1"></i> Edit Settings
+            </a>
+        </div>
+        <div class="card-body">
+            <div class="row mb-3 align-items-center">
+                <div class="col-sm-3">
+                    <div class="profile-avatar mx-auto mx-sm-0" style="width: 80px; height: 80px; font-size: 2rem; border: 3px solid var(--color-primary-light);">
+                        {{ user_data.first_name[0] if user_data.first_name }}{{ user_data.last_name[0] if user_data.last_name }}
+                    </div>
+                </div>
+                <div class="col-sm-9 text-center text-sm-start mt-3 mt-sm-0">
+                    <h5 class="mb-1">{{ user_data.full_name }}</h5>
+                    <p class="text-muted mb-0">{{ user_data.email }}</p>
+                    <small class="text-muted">Member since: {{ user_data.created_at }}</small>
+                </div>
+            </div>
+
+            <hr>
+
+            <h5 class="mt-4 mb-3"><i class="fab fa-linkedin me-2 text-primary"></i>LinkedIn & AI Configuration</h5>
+            
+            <div class="mb-3">
+                <strong>LinkedIn Email:</strong>
+                <span class="text-muted">{{ user_data.linkedin_email }}</span>
+            </div>
+            
+            <div class="mb-3">
+                <strong>Configuration Status:</strong>
+                {% if user_data.has_linkedin_setup %}
+                    <span class="badge bg-success"><i class="fas fa-check-circle me-1"></i> Complete</span>
+                {% else %}
+                    <span class="badge bg-warning text-dark"><i class="fas fa-exclamation-triangle me-1"></i> Incomplete</span>
+                    <p class="small text-muted mt-1">Please complete your setup in <a href="{{ url_for('settings') }}">Settings</a> to enable automation features.</p>
+                {% endif %}
+            </div>
+
+             <div class="mb-3">
+                <strong>Gemini API Key:</strong>
+                {% if user_data.has_gemini_key %}
+                    <span class="badge bg-success"><i class="fas fa-key me-1"></i> Set</span>
+                {% else %}
+                    <span class="badge bg-secondary"><i class="fas fa-times-circle me-1"></i> Not Set</span>
+                     <p class="small text-muted mt-1">An API key is required for AI features. Add it in <a href="{{ url_for('settings') }}">Settings</a>.</p>
+                {% endif %}
+            </div>
+
+             <div class="mt-4 text-center">
+                 <a href="{{ url_for('settings') }}" class="btn btn-primary">
+                    <i class="fas fa-cog me-1"></i> Go to Settings
+                </a>
+            </div>
+
+        </div>
+    </div>
+</div>
+{% endblock %}
