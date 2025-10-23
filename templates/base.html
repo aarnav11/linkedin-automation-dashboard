@@ -295,14 +295,19 @@
         const moonIcon = '<i class="fas fa-moon"></i>';
 
         (function() {
-            const storedTheme = localStorage.getItem('theme');
-            if (storedTheme === 'dark' || (!storedTheme && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
-                document.documentElement.classList.add('dark');
-                if (themeToggle) themeToggle.innerHTML = sunIcon;
-            } else if (themeToggle) {
-                themeToggle.innerHTML = moonIcon;
-            }
-        })();
+    // Always default to light mode
+    document.documentElement.classList.remove('dark');
+    if (themeToggle) {
+        themeToggle.innerHTML = moonIcon; // Show moon icon for light mode
+    }
+
+    // Check if user previously saved 'dark' in localStorage
+    const storedTheme = localStorage.getItem('theme');
+    if (storedTheme === 'dark') {
+         document.documentElement.classList.add('dark');
+         if (themeToggle) themeToggle.innerHTML = sunIcon; // Show sun icon
+    }
+})();
 
         if (themeToggle) {
             themeToggle.addEventListener('click', () => {

@@ -2,6 +2,10 @@ branch-defaults:
   main:
     environment: Linksprig-dev
     group_suffix: null
+environment-defaults:
+  Linksprig-dev:
+    branch: null
+    repository: null
 global:
   application_name: Linksprig
   branch: null
