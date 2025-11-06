@@ -2,6 +2,27 @@
 {% block title %}AI Inbox - LinkedIn Automation{% endblock %}
 
 {% block content %}
+<style>
+    .button-wrapper {
+        /* This container holds the space, preventing layout shift */
+        position: relative;
+        display: inline-block;
+        /* Set a min-height or height if needed, but inline-block often suffices */
+    }
+    /* By default, stop button is hidden */
+    .button-wrapper #stop-inbox-btn {
+        display: none;
+    }
+    
+    /* When .is-running is added, hide start and show stop */
+    .button-wrapper.is-running #start-inbox-btn {
+        display: none;
+    }
+    .button-wrapper.is-running #stop-inbox-btn {
+        display: block;
+    }
+</style>
+
 <div class="container mt-4">
     <div class="card shadow-sm">
         <div class="card-header d-flex align-items-center justify-content-between">
@@ -11,9 +32,16 @@
         <div class="card-body">
             <div id="controls-section" class="text-center p-3">
                 <p class="text-muted">The assistant will find the next message needing a reply and generate a suggested response for your approval.</p>
-                <button class="btn btn-primary btn-lg shadow-sm" id="start-inbox-btn">
-                    <i class="fas fa-play-circle me-2"></i> Find Next Message
-                </button>
+                
+                <div class="button-wrapper" id="inbox-button-wrapper">
+                    <button class="btn btn-primary btn-lg shadow-sm" id="start-inbox-btn">
+                        <i class="fas fa-play-circle me-2"></i> Find Next Message
+                    </button>
+                    <button class="btn btn-danger btn-lg shadow-sm" id="stop-inbox-btn">
+                        <i class="fas fa-stop-circle me-2"></i> Stop Task
+                    </button>
+                </div>
+
             </div>
 
             <div id="status-section" class="mt-3" style="display: none;">
@@ -95,6 +123,8 @@ let pollInterval = null;
 const POLLING_INTERVAL_MS = 3000; // Poll every 3 seconds
 
 const startBtn = document.getElementById('start-inbox-btn');
+const stopBtn = document.getElementById('stop-inbox-btn');
+const buttonWrapper = document.getElementById('inbox-button-wrapper'); // <-- FIX 2
 const statusSection = document.getElementById('status-section');
 const statusContent = document.getElementById('status-content');
 const previewModal = new bootstrap.Modal(document.getElementById('messagePreviewModal'));
@@ -112,14 +142,10 @@ function updateCounts(data) {
 }
 
 function showReplyPreview(data) {
-    // --- FIX START ---
-    // The actual preview data is nested inside the 'preview' key from the server
     const preview = data.preview || {}; 
     const contact = preview.contact || {};
     const history = preview.conversation_history || [];
-    // --- FIX END ---
 
-    // Populate contact info
     document.getElementById('preview-name').textContent = contact.name || 'N/A';
     document.getElementById('preview-role').textContent = contact.title || 'N/A';
     const profileLink = document.getElementById('preview-linkedin');
@@ -130,7 +156,6 @@ function showReplyPreview(data) {
         profileLink.style.display = 'none';
     }
 
-    // **CRITICAL FIX**: Populate the textarea with the correct key 'generated_message'
     const messageTextarea = document.getElementById('preview-message');
     messageTextarea.value = preview.generated_message || 'AI could not generate a response. Please write one manually.';
     
@@ -142,7 +167,6 @@ function showReplyPreview(data) {
     messageTextarea.oninput = updateCharCount;
     updateCharCount();
 
-    // Populate intent badge - Note: The client doesn't send this yet, but the logic is ready
     const intentBadge = document.getElementById('preview-intent');
     if (preview.intent) {
         intentBadge.textContent = preview.intent.replace(/_/g, ' ').toUpperCase();
@@ -151,12 +175,11 @@ function showReplyPreview(data) {
         intentBadge.style.display = 'none';
     }
     
-    // Populate conversation history
     const historyList = document.getElementById('preview-history');
     historyList.innerHTML = '';
     
     if (history && history.length > 0) {
-        history.slice(-5).forEach(msg => { // Show last 5 messages
+        history.slice(-5).forEach(msg => {
             const isYou = msg.sender && (msg.sender.toLowerCase() === 'you' || msg.sender.toLowerCase().includes('arnav'));
             const item = document.createElement('li');
             item.className = `list-group-item d-flex flex-column ${isYou ? 'align-items-end' : 'align-items-start'}`;
@@ -201,7 +224,6 @@ function sendInboxAction(action) {
         if (data.success) {
             previewModal.hide();
             setStatus('Action confirmed. Searching for the next message...');
-            // Restart polling for the next preview
             pollForAction(); 
         } else {
             alert('Error processing action: ' + (data.error || 'Unknown error.'));
@@ -213,11 +235,8 @@ function sendInboxAction(action) {
     });
 }
 
-// **FIXED POLLING FUNCTION**
 function pollForAction() {
     if (!currentProcessId) return;
-
-    // Clear any previous interval to avoid multiple polling loops
     if (pollInterval) clearInterval(pollInterval);
     
     setStatus('Client is searching for a message that needs a reply...');
@@ -230,19 +249,23 @@ function pollForAction() {
             })
             .then(data => {
                 console.log("Polling for preview...", data);
-                // **SIMPLIFIED LOGIC**: Check if the server is awaiting confirmation
                 if (data.awaiting_confirmation === true) {
-                    clearInterval(pollInterval); // Stop polling
+                    clearInterval(pollInterval); 
                     pollInterval = null;
                     setStatus('Action required. Please review the suggested reply.', false);
-                    // The server sends the exact data structure we need, so we pass it directly
                     showReplyPreview(data);
                 }
-                // Otherwise, do nothing and let the next poll run
+                else if (data.status === 'completed' || data.status === 'stopped' || data.status === 'failed') {
+                    clearInterval(pollInterval);
+                    pollInterval = null;
+                    setStatus(`Task finished with status: ${data.status}`, false);
+                    buttonWrapper.classList.remove('is-running'); // <-- FIX 2
+                    startBtn.disabled = false;
+                    startBtn.innerHTML = '<i class="fas fa-play-circle me-2"></i> Find Next Message';
+                }
             })
             .catch(err => {
                 console.error("Polling error:", err);
-                // We don't stop the interval on error, as the connection might be temporary
             });
     }, POLLING_INTERVAL_MS);
 }
@@ -260,7 +283,8 @@ startBtn.addEventListener('click', () => {
         .then(data => {
             if (data.success && data.task_id) {
                 currentProcessId = data.task_id;
-                pollForAction(); // Start polling for a preview
+                buttonWrapper.classList.add('is-running'); // <-- FIX 2
+                pollForAction(); 
             } else {
                 setStatus(`<strong class="text-danger">Error:</strong> ${data.error || 'Could not start task.'}`, false);
                 startBtn.disabled = false;
@@ -275,11 +299,49 @@ startBtn.addEventListener('click', () => {
         });
 });
 
-// Modal button event listeners
+// --- FIX 1: Corrected Stop button event listener ---
+stopBtn.addEventListener('click', () => {
+    if (!currentProcessId) return;
+
+    if (!confirm('Are you sure you want to stop the current inbox task?')) {
+        return;
+    }
+
+    stopBtn.disabled = true;
+    stopBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Stopping...';
+    if (pollInterval) clearInterval(pollInterval); // Stop polling
+    
+    // --- THIS IS THE FIX ---
+    // The URL is /stop_task/<task_id> and it does not need a JSON body
+    fetch(`/stop_task/${currentProcessId}`, { 
+        method: 'POST'
+        // No headers or body needed
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.success) {
+            setStatus('Stop request sent. The client will stop shortly.', false);
+        } else {
+            setStatus(`<strong class="text-danger">Error:</strong> ${data.error || 'Could not stop task.'}`, false);
+        }
+    })
+    .catch(err => {
+        console.error("Stop task error:", err);
+        setStatus(`<strong class="text-danger">Error:</strong> Failed to send stop request.`, false);
+    })
+    .finally(() => {
+        // Reset UI
+        buttonWrapper.classList.remove('is-running'); 
+        stopBtn.disabled = false;
+        stopBtn.innerHTML = '<i class="fas fa-stop-circle me-2"></i> Stop Task';
+        startBtn.disabled = false;
+        startBtn.innerHTML = '<i class="fas fa-play-circle me-2"></i> Find Next Message';
+    });
+});
+
 document.getElementById('confirm-send').addEventListener('click', () => sendInboxAction('send'));
 document.getElementById('confirm-skip').addEventListener('click', () => sendInboxAction('skip'));
 
-// Clean up polling when the user navigates away
 window.addEventListener('beforeunload', () => {
     if (pollInterval) clearInterval(pollInterval);
 });

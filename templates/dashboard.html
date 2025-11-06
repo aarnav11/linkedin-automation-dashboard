@@ -4,10 +4,11 @@
 
 {% block content %}
 <style>
-    /* Styles for modern stat cards (from previous step) */
+    /* Styles for modern stat cards */
     .stat-grid {
         display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+        /* Updated to fit 7 cards, or wrap nicely */
+        grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
         gap: 1.5rem;
         margin-bottom: 2rem;
     }
@@ -65,6 +66,18 @@
         color: var(--color-text);
         line-height: 1;
     }
+    /* Small text for percentage sign */
+    .stat-info .stat-number small {
+        font-size: 1.25rem;
+        font-weight: 600;
+        margin-left: 2px;
+    }
+    /* Special style for N/A stat */
+    .stat-info .stat-number.not-synced {
+        font-size: 1.25rem;
+        font-weight: 600;
+        color: var(--color-text-secondary);
+    }
     
     /* Dark mode adjustments for new colors */
     html.dark .stat-icon.success {
@@ -82,48 +95,37 @@
 </style>
 
 <style>
-    /* --- NEW STYLES TO MAKE DASHBOARD CARDS SMALLER --- */
-
-    /* Override for the grid - reduce the minimum card width and gap */
+    /* --- STYLES TO MAKE DASHBOARD CARDS SMALLER --- */
     .dashboard-grid {
-        /* Original: repeat(auto-fit, minmax(280px, 1fr)) */
         grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-        gap: 1rem; /* Slightly reduce gap */
+        gap: 1rem;
     }
-
-    /* Override for the card - make them "smaller" with less padding */
     .dashboard-card {
-        /* Original: padding: 2rem; */
         padding: 1.5rem; 
     }
-
-    /* Override for the icon */
     .card-icon {
-        /* Original: font-size: 2.5rem; margin-bottom: 1rem; */
         font-size: 2rem; 
         margin-bottom: 0.75rem;
     }
-
-    /* Override for the title */
     .dashboard-card h3 {
-        /* Original: font-size: 1.25rem; */
         font-size: 1.15rem;
     }
-
-    /* Override for the description */
     .dashboard-card p {
-        /* Original: margin-bottom: 1.5rem; */
         font-size: 0.9rem;
         margin-bottom: 1rem;
     }
-
-    /* Override for the button */
     .card-button {
-        /* Original: padding: 0.6rem 1.2rem; */
         padding: 0.5rem 1rem;
         font-size: 0.9rem;
     }
-    /* --- END OF NEW STYLES --- */
+    /* Make non-link cards clickable */
+    .dashboard-card.action-card {
+        cursor: pointer;
+    }
+    .dashboard-card.action-card:hover {
+        background-color: var(--color-surface-hover);
+    }
+    /* --- END OF SMALLER CARD STYLES --- */
 </style>
 
 <div class="container">
@@ -134,22 +136,65 @@
 
     <div class="stat-grid">
         <div class="stat-card">
-            <div class="stat-icon primary">
-                <i class="fas fa-tasks"></i>
+            <div class="stat-icon success">
+                <i class="fas fa-users"></i>
             </div>
             <div class="stat-info">
-                <h5>Total Campaigns</h5>
-                <span class="stat-number">{{ stats.active_campaigns }}</span>
+                <h5>Total Connections</h5>
+                {% if stats.total_connections > 0 %}
+                    <span class="stat-number">{{ stats.total_connections }}</span>
+                {% else %}
+                    <span class="stat-number not-synced">N/A</span>
+                {% endif %}
             </div>
         </div>
-        
+
         <div class="stat-card">
             <div class="stat-icon success">
+                <i class="fas fa-user-friends"></i>
+            </div>
+            <div class="stat-info">
+                <h5>New Connections</h5>
+                <span class="stat-number">{{ stats.new_connections_made }}</span>
+            </div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-icon primary">
                 <i class="fas fa-user-plus"></i>
             </div>
             <div class="stat-info">
                 <h5>Connections Sent</h5>
-                <span class="stat-number">{{ stats.connections_made }}</span>
+                <span class="stat-number">{{ stats.connections_sent }}</span>
+            </div>
+        </div>
+
+        <div class="stat-card">
+            <div class="stat-icon info">
+                <i class="fas fa-address-book"></i>
+            </div>
+            <div class="stat-info">
+                <h5>Contacts Processed</h5>
+                <span class="stat-number">{{ stats.contacts_processed }}</span>
+            </div>
+        </div>
+        
+        <div class="stat-card">
+            <div class="stat-icon warning">
+                <i class="fas fa-star"></i>
+            </div>
+            <div class="stat-info">
+                <h5>AI-Identified Leads</h5>
+                <span class="stat-number">{{ stats.ai_identified_leads }}</span>
+            </div>
+        </div>
+
+        <div class="stat-card">
+            <div class="stat-icon success">
+                <i class="fas fa-bullseye"></i>
+            </div>
+            <div class="stat-info">
+                <h5>Campaign Success Rate</h5>
+                <span class="stat-number">{{ stats.campaign_success_rate }}<small>%</small></span>
             </div>
         </div>
         
@@ -158,20 +203,21 @@
                 <i class="fas fa-robot"></i>
             </div>
             <div class="stat-info">
-                <h5>AI Messages Sent</h5>
-                <span class="stat-number">{{ stats.messages_sent }}</span>
+                <h5>AI Auto-Reply Rate</h5>
+                <span class="stat-number">{{ stats.auto_reply_rate }}<small>%</small></span>
             </div>
         </div>
-        
+
         <div class="stat-card">
-            <div class="stat-icon warning">
-                <i class="fas fa-address-book"></i>
+            <div class="stat-icon primary">
+                <i class="fas fa-tasks"></i>
             </div>
             <div class="stat-info">
-                <h5>Contacts Processed</h5>
-                <span class="stat-number">{{ stats.total_contacts }}</span>
+                <h5>Active Campaigns</h5>
+                <span class="stat-number">{{ stats.active_campaigns }}</span>
             </div>
         </div>
+
     </div>
     {% if not user.gemini_api_key %}
     <div class="card mb-4" style="border-left: 4px solid var(--color-primary);">
@@ -246,6 +292,13 @@
             <span class="card-button">Search Profiles <i class="fas fa-arrow-right"></i></span>
         </a>
 
+        <div id="sync-network-card" class="dashboard-card action-card {% if not user.has_linkedin_setup() %}disabled{% endif %}">
+            <div class="card-icon"><i class="fas fa-sync-alt"></i></div>
+            <h3>Sync Network Stats</h3>
+            <p>Get your latest total connection count from LinkedIn.</p>
+            <span class="card-button">Sync Now <i class="fas fa-arrow-right"></i></span>
+        </div>
+        
         <a href="{{ url_for('client_setup') }}" class="dashboard-card">
             <div class="card-icon"><i class="fas fa-desktop"></i></div>
             <h3>Client Setup</h3>
@@ -254,4 +307,91 @@
         </a>
     </div>
 </div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const syncCard = document.getElementById('sync-network-card');
+    
+    if (syncCard && !syncCard.classList.contains('disabled')) {
+        syncCard.addEventListener('click', function() {
+            // Show loading state (optional)
+            const icon = syncCard.querySelector('.card-icon i');
+            const title = syncCard.querySelector('h3');
+            const originalTitle = title.textContent;
+
+            title.textContent = 'Syncing...';
+            icon.classList.add('fa-spin');
+
+            fetch('{{ url_for("trigger_network_sync") }}', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    // You might need CSRF token handling here if you implement it
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    // Show success
+                    showFlash('Network sync queued! The client will process it soon. Refresh the page in a moment to see the new count.', 'success');
+                    title.textContent = 'Sync Queued';
+                } else {
+                    // Show error
+                    showFlash(data.message || 'Error queuing sync.', 'error');
+                    title.textContent = originalTitle;
+                }
+            })
+            .catch(error => {
+                console.error('Error triggering sync:', error);
+                showFlash('A network error occurred.', 'error');
+                title.textContent = originalTitle;
+            })
+            .finally(() => {
+                // Remove loading state after a delay
+                setTimeout(() => {
+                    icon.classList.remove('fa-spin');
+                }, 1000);
+            });
+        });
+    }
+
+    // Helper function to show flash messages dynamically
+    // Assumes you have a <div id="flash-container"> in your base.html or a .container
+    function showFlash(message, category) {
+        let flashContainer = document.getElementById('flash-container');
+        if (!flashContainer) {
+            flashContainer = document.querySelector('.container');
+            if (!flashContainer) return; // Failsafe
+        }
+
+        const alert = document.createElement('div');
+        // Use Bootstrap alert classes
+        alert.className = `alert alert-${category} alert-dismissible fade show m-3`;
+        alert.setAttribute('role', 'alert');
+        alert.innerHTML = `
+            ${message}
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+        `;
+        
+        // Prepend to the container
+        flashContainer.prepend(alert);
+        
+        // Auto-dismiss
+        setTimeout(() => {
+            // Check if bootstrap is loaded
+            if (typeof bootstrap !== 'undefined') {
+                const bsAlert = new bootstrap.Alert(alert);
+                if (bsAlert) {
+                    bsAlert.close();
+                }
+            } else {
+                alert.remove(); // Fallback if bootstrap JS isn't available
+            }
+        }, 5000);
+    }
+});
+</script>
 {% endblock %}

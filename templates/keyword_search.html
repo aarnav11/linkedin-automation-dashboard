@@ -240,5 +240,24 @@ document.getElementById('searchForm').addEventListener('submit', function(e) {
     document.getElementById('searchBtn').innerHTML = '<i class="fas fa-spinner fa-spin"></i> Starting...';
     document.getElementById('searchBtn').disabled = true;
 });
+
+document.getElementById('stopSearchBtn')?.addEventListener('click', function() {
+    if (!currentSearchId) return;
+    if (!confirm("Are you sure you want to stop this search?")) return;
+
+    fetch(`/stop_task/${currentSearchId}`, { method: 'POST' })
+        .then(res => res.json())
+        .then(data => {
+            if (data.success) {
+                alert("✅ Search stopped successfully.");
+                clearInterval(statusInterval);
+                document.getElementById('searchStatus').innerHTML = "<p class='text-danger'>Search stopped.</p>";
+                document.getElementById('stopSearchBtn').style.display = 'none';
+            } else {
+                alert("⚠️ Failed to stop search: " + data.message);
+            }
+        })
+        .catch(err => console.error("Stop search error:", err));
+});
 </script>
 {% endblock %}

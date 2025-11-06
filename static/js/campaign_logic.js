@@ -121,44 +121,53 @@ function startCampaign() {
 
 function stopCampaign() {
     if (!campaignId) return;
-    
+
     const stopBtn = document.getElementById('stop-campaign');
     if (stopBtn) {
         stopBtn.disabled = true;
         stopBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Stopping...';
     }
-    
-    fetch('/stop_campaign', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ campaign_id: campaignId })
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            showAlert('Campaign stopped successfully', 'info');
-            stopStatusChecking();
-            
-            // Reset UI
-            document.getElementById('start-campaign').style.display = 'inline-block';
-            document.getElementById('stop-campaign').style.display = 'none';
-        } else {
-            showAlert(data.error || 'Failed to stop campaign', 'error');
-        }
-    })
-    .catch(error => {
-        console.error('Error stopping campaign:', error);
-        showAlert('Error stopping campaign: ' + error.message, 'error');
-    })
-    .finally(() => {
+
+    if (!confirm("Are you sure you want to stop this campaign?")) {
         if (stopBtn) {
             stopBtn.disabled = false;
             stopBtn.innerHTML = '<i class="fas fa-stop-circle me-2"></i>Stop Campaign';
         }
-    });
+        return;
+    }
+
+    // Use unified stop_task endpoint instead of /stop_campaign
+    fetch(`/stop_task/${campaignId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+    })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                showAlert('⏹️ Campaign stopped successfully!', 'info');
+                stopStatusChecking();
+
+                // Reset UI to idle state
+                const startBtn = document.getElementById('start-campaign');
+                if (startBtn) startBtn.style.display = 'inline-block';
+                if (stopBtn) stopBtn.style.display = 'none';
+                document.getElementById('status-badge').innerHTML = '⏹️ Stopped';
+            } else {
+                showAlert(data.message || '⚠️ Failed to stop campaign.', 'error');
+            }
+        })
+        .catch(error => {
+            console.error('Error stopping campaign:', error);
+            showAlert('Network error while stopping campaign: ' + error.message, 'error');
+        })
+        .finally(() => {
+            if (stopBtn) {
+                stopBtn.disabled = false;
+                stopBtn.innerHTML = '<i class="fas fa-stop-circle me-2"></i>Stop Campaign';
+            }
+        });
 }
+
 
 function startStatusChecking() {
     if (statusCheckInterval) {

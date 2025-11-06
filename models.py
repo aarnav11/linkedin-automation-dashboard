@@ -1,4 +1,4 @@
-from mongoengine import Document, StringField, DateTimeField, DictField, BooleanField, ReferenceField
+from mongoengine import Document, IntField, StringField, DateTimeField, DictField, BooleanField, ReferenceField
 from flask_bcrypt import generate_password_hash, check_password_hash
 from datetime import datetime
 import uuid
@@ -13,7 +13,8 @@ class User(Document):
     last_name = StringField(required=True, max_length=50)
     created_at = DateTimeField(default=datetime.utcnow)
     updated_at = DateTimeField(default=datetime.utcnow)
-
+    total_connections = IntField(default=0)
+    initial_connections = IntField(default=None)
     # LinkedIn Settings
     linkedin_email = StringField(max_length=120)
     linkedin_password = StringField(max_length=255)

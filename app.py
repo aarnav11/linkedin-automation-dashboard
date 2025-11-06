@@ -329,78 +329,190 @@ def login():
 def dashboard():
     user = get_current_user()
     
-    # --- NEW: Query for real statistics ---
+    # --- Flag to save user model if we update stats ---
+    user_stats_updated = False
+    
     try:
-        # 1. Active Campaigns (Outreach campaigns that are running or queued)
+        # --- Get latest network sync task ---
+        latest_network_stat = Task.objects(
+            user=user,
+            task_type='sync_network_stats',
+            status='completed'
+        ).order_by('-completed_at').first()
+
+        total_connections = user.total_connections  # Get persistent value
+        new_connections_made = 0
+        
+        if latest_network_stat and latest_network_stat.result:
+            task_connections = latest_network_stat.result.get('total_connections', 0)
+            
+            # --- PERSISTENCE LOGIC ---
+            # If the task result is new and different, update the persistent User model
+            if task_connections > 0 and task_connections != user.total_connections:
+                user.total_connections = task_connections
+                total_connections = task_connections  # Use the new value
+                user_stats_updated = True
+                
+            # --- INITIAL & NEW CONNECTIONS LOGIC ---
+            # Check if the user model has the IntField `initial_connections`
+            if hasattr(user, 'initial_connections'):
+                if user.initial_connections is None and total_connections > 0:
+                    # This is the first sync, set the baseline
+                    user.initial_connections = total_connections
+                    new_connections_made = 0
+                    user_stats_updated = True
+                elif user.initial_connections is not None:
+                    # Calculate new connections based on the baseline
+                    new_connections_made = total_connections - user.initial_connections
+            else:
+                logger.warning(f"User model for {user.id} is missing 'initial_connections' field.")
+        
+        # --- Save any updates to the User model ---
+        if user_stats_updated:
+            try:
+                user.save()
+                logger.info(f"Updated persistent stats for user {user.id}")
+            except Exception as e:
+                logger.warning(f"Could not save persistent stats for user {user.id}: {e}")
+        
+        # --- Aggregate other stats ---
+
+        # 1. Active Campaigns
         active_campaigns_count = Task.objects(
             user=user,
             task_type='outreach_campaign',
             status__in=['queued', 'processing']
         ).count()
         
-        # Get all completed tasks to aggregate results
-        completed_search_tasks = Task.objects(
-            user=user, 
-            task_type='keyword_search', 
-            status='completed'
-        )
+        # 2. Connections Sent
+        completed_search_tasks = Task.objects(user=user, task_type='keyword_search', status='completed')
+        completed_outreach_tasks = Task.objects(user=user, task_type='outreach_campaign', status='completed')
         
-        completed_outreach_tasks = Task.objects(
-            user=user, 
-            task_type='outreach_campaign', 
-            status='completed'
-        )
+        total_search_invites = sum(task.result.get('invites_sent', 0) for task in completed_search_tasks if task.result)
+        total_outreach_success = sum(task.result.get('successful', 0) for task in completed_outreach_tasks if task.result)
+        total_connections_sent = total_search_invites + total_outreach_success
+
+        # 3. AI & Inbox Stats
+        completed_inbox_tasks = Task.objects(user=user, task_type='process_inbox', status='completed')
         
-        completed_inbox_tasks = Task.objects(
-            user=user, 
-            task_type='process_inbox', 
-            status='completed'
-        )
+        total_ai_auto_replies = 0
+        total_ai_identified_leads = 0
+        total_inbox_conversations_processed = 0 
+        for task in completed_inbox_tasks:
+            if task.result:
+                total_ai_auto_replies += task.result.get('auto_replied', 0)
+                total_ai_identified_leads += task.result.get('high_priority', 0) # Fixed key
+                total_inbox_conversations_processed += task.result.get('total_processed', 0)
 
-        # 2. Connections Sent (from Keyword Search + Outreach Campaigns)
-        total_search_invites = sum(
-            task.result.get('invites_sent', 0) 
-            for task in completed_search_tasks if task.result
-        )
-        total_outreach_success = sum(
-            task.result.get('successful', 0) 
-            for task in completed_outreach_tasks if task.result
-        )
-        total_connections = total_search_invites + total_outreach_success
+        # 4. Contacts Processed
+        total_contacts_processed = sum(task.result.get('progress', 0) for task in completed_outreach_tasks if task.result)
+        
+        # 5. Campaign Success Rate
+        campaign_success_rate = 0
+        if total_contacts_processed > 0:
+            campaign_success_rate = round((total_outreach_success / total_contacts_processed) * 100)
+            
+        # 6. Auto-Reply Rate
+        auto_reply_rate = 0
+        if total_inbox_conversations_processed > 0:
+            auto_reply_rate = round((total_ai_auto_replies / total_inbox_conversations_processed) * 100)
 
-        # 3. AI Messages Sent (from AI Inbox auto-replies)
-        total_ai_messages = sum(
-            task.result.get('auto_replied', 0) 
-            for task in completed_inbox_tasks if task.result
-        )
-
-        # 4. Total Contacts Processed (from Outreach Campaigns)
-        total_contacts_processed = sum(
-            task.result.get('progress', 0) # 'progress' tracks all attempts (success, fail, skip)
-            for task in completed_outreach_tasks if task.result
-        )
-
+        # --- Final Stats Payload ---
         stats = {
             'active_campaigns': active_campaigns_count,
-            'messages_sent': total_ai_messages,
-            'connections_made': total_connections,
-            'total_contacts': total_contacts_processed
+            'connections_sent': total_connections_sent,
+            'contacts_processed': total_contacts_processed,
+            'ai_identified_leads': total_ai_identified_leads,
+            'campaign_success_rate': campaign_success_rate,
+            'auto_reply_rate': auto_reply_rate,
+            'total_connections': total_connections,      # Now from persistent store
+            'new_connections_made': new_connections_made # Now from persistent store
         }
     
     except Exception as e:
-        logger.error(f"Error calculating dashboard stats for user {user.id}: {e}")
+        logger.error(f"Error calculating dashboard stats for user {user.id}: {e}", exc_info=True)
         # Fallback to zeros if DB query fails
         stats = {
             'active_campaigns': 0,
-            'messages_sent': 0,
-            'connections_made': 0,
-            'total_contacts': 0
+            'connections_sent': 0,
+            'contacts_processed': 0,
+            'ai_identified_leads': 0,
+            'campaign_success_rate': 0,
+            'auto_reply_rate': 0,
+            'total_connections': user.total_connections, # Show last known value
+            'new_connections_made': 0
         }
-    # --- END of new logic ---
     
     return render_template('dashboard.html', 
                          user=user,
                          stats=stats)
+
+
+@application.route('/trigger-network-sync', methods=['POST'])
+@login_required
+@linkedin_setup_required
+def trigger_network_sync():
+    """Queues a task to sync network statistics."""
+    try:
+        user = get_current_user()
+        
+        # Check if a sync task is already queued or processing
+        existing_task = Task.objects(
+            user=user,
+            task_type='sync_network_stats',
+            status__in=['queued', 'processing']
+        ).first()
+        
+        if existing_task:
+            return jsonify({
+                'success': False, 
+                'message': 'A network sync task is already in progress.'
+            }), 409 # 409 Conflict
+
+        # Create new task
+        task = Task(
+            user=user,
+            task_type='sync_network_stats',
+            params={'task_id': str(uuid.uuid4())},
+            status='queued'
+        )
+        task.save()
+        
+        logger.info(f"✅ Queued 'sync_network_stats' task {task.id} for user {user.email}")
+        
+        return jsonify({
+            'success': True, 
+            'message': 'Network sync task has been queued. The client will pick it up shortly.'
+        })
+        
+    except Exception as e:
+        logger.error(f"Error queuing network sync: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@application.route('/stop_task/<task_id>', methods=['POST'])
+@login_required
+def stop_task(task_id):
+    """User-initiated stop for a running task (campaign/search/inbox)."""
+    user = get_current_user()
+    if not user:
+        return jsonify({'success': False, 'message': 'User not found.'}), 401
+
+    try:
+        # --- THIS IS THE FIX ---
+        # Create a persistent task instead of using the in-memory queue
+        task = Task(
+            user=user,
+            task_type='stop_task',
+            params={'task_to_stop': task_id}, # Use a clearer param name
+            status='queued'
+        )
+        task.save()
+        
+        logger.info(f"✅ Queued persistent 'stop_task' for task {task_id}")
+        return jsonify({'success': True, 'message': 'Stop request queued for client.'})
+    except Exception as e:
+        logger.error(f"Error sending stop request for {task_id}: {e}")
+        return jsonify({'success': False, 'message': str(e)}), 500
 
 @application.route('/get-started')
 def get_started():
@@ -1083,8 +1195,17 @@ def campaign_action():
         'contact_index': data.get('contact_index') # Pass index along
     }
 
-    result = client_manager.send_campaign_action(str(user.id), payload)
-    return jsonify(result)
+    # --- THIS IS THE FIX ---
+    # Create a persistent task instead of using the in-memory queue
+    task = Task(
+        user=user,
+        task_type='campaign_action',
+        params=payload, # Payload is already in the correct format
+        status='queued'
+    )
+    task.save()
+    
+    return jsonify({'success': True, 'message': 'Campaign action queued.'})
 
 @application.route('/stop_campaign', methods=['POST'])
 @login_required
@@ -1161,8 +1282,13 @@ def keyword_search():
             )
             task.save()
             
-            flash(f'Keyword search for "{search_keywords}" has been queued for the client.', 'success')
-            return redirect(url_for('keyword_search'))
+            flash(f'Keyword search for "{search_keywords}" has been queued for the client. Monitoring task...', 'success')
+            
+            search_info={
+                'search_id': str(task.id),
+                'keywords': search_keywords,
+            }
+            return render_template('keyword_search.html', user=user, search_info=search_info)
             
         except Exception as e:
             flash(f'Search error: {str(e)}', 'error')
@@ -1244,15 +1370,13 @@ def api_get_tasks():
 @application.route('/api/report-task', methods=['POST'])
 def api_report_task():
     """Client reports generated message/progress back to dashboard.
-    Backwards-compatible: still supports realtime 'preview' reports used for awaiting_confirmation,
-    but also detects final task results (task_id + type + success + payload/result) and persists them.
+    Supports interim updates (which update results but don't stop the task)
+    and final task results (which persist and close the task).
     """
     try:
         auth = request.headers.get('Authorization', '')
-        api_key = None
-        if auth and auth.startswith('Bearer '):
-            api_key = auth.replace('Bearer ', '').strip()
-
+        api_key = auth.replace('Bearer ', '').strip() if auth.startswith('Bearer ') else None
+        
         if not api_key:
             return jsonify({'error': 'Missing API key'}), 401
 
@@ -1261,94 +1385,76 @@ def api_report_task():
             return jsonify({'error': 'Invalid API key'}), 403
 
         data = request.json or {}
+        
+        # --- NEW: Check for interim flag ---
+        is_interim = data.get('interim_update', False)
 
-        # Normalize possible result fields from different client versions
-        task_id = data.get('task_id') or data.get('taskId') or data.get('id') or data.get('task') or str(uuid.uuid4())
-        task_type = data.get('type') or data.get('task_type') or data.get('t')
-        success_flag = data.get('success', None)  # may be None for preview messages
+        task_id = data.get('task_id') or data.get('taskId')
+        task_type = data.get('type') or data.get('task_type')
+        success_flag = data.get('success', None)
         payload = data.get('payload') or data.get('result') or data.get('results') or {}
+        
+        if not task_id:
+            logger.warning(f"Report received without task_id: {data.get('type')}")
+            # Fallback for old preview-mode (non-task based)
+            if 'contact' in data:
+                automation_status['awaiting'] = True
+                automation_status['message'] = data.get('message', '')
+                automation_status['current'] = {
+                    'task_id': task_id,
+                    'contact': data.get('contact', {}),
+                    'message': data.get('message', ''),
+                    'timestamp': datetime.utcnow().isoformat()
+                }
+                return jsonify({'success': True, 'preview': True}), 200
+            return jsonify({'error': 'Missing task_id'}), 400
 
-        # Heuristic: treat this as a full task-result if it contains a type OR success flag OR a payload with summary keys
-        is_task_result = (
-            task_type
-            or (success_flag is not None)
-            or any(k in payload for k in ('invites_sent', 'processed_count', 'auto_replied', 'progress', 'successful'))
-        )
+        # Try to update the Task in the DB
+        try:
+            task_obj = Task.objects.get(id=task_id)
+        except Exception:
+            task_obj = None
 
-        if is_task_result:
-            # Try to update Task in DB (task_id is expected to be the stringified Task.id)
+        result_obj = payload if isinstance(payload, dict) else {}
+
+        if task_obj:
+            # --- MODIFIED LOGIC ---
+            
+            # Always update the result object
             try:
-                task_obj = Task.objects.get(id=task_id)
+                task_obj.result = result_obj
             except Exception:
-                task_obj = None
+                task_obj.result = json.loads(json.dumps(result_obj, default=str))
 
-            # Normalize what we store as the "result" document
-            result_obj = payload if isinstance(payload, dict) else (data.get('result') or data.get('payload') or {})
-
-            # Patch to ensure small keys exist (backwards compatibility)
-            # When client sends "payload" with nested fields we accept that as the canonical result
-            if task_obj:
-                task_obj.status = 'completed' if success_flag or result_obj.get('success') else 'failed'
-                # store result under task_obj.result
-                try:
-                    task_obj.result = result_obj
-                except Exception:
-                    # fallback: stringify if mongodb refuses a complex object
-                    task_obj.result = json.loads(json.dumps(result_obj, default=str))
-                task_obj.error = data.get('error') or data.get('exception') or None
+            # ONLY update status if this is NOT an interim report
+            if not is_interim:
+                task_obj.status = 'completed' if (success_flag or result_obj.get('success')) else 'failed'
+                task_obj.error = data.get('error')
                 task_obj.completed_at = datetime.utcnow()
-                task_obj.save()
-                logger.info(f"✅ Persisted task result for task {task_id} (type={task_obj.task_type})")
+            
+            task_obj.save()
+            
+            if is_interim:
+                logger.info(f"📈 Updated interim stats for task {task_id} (type={task_obj.task_type})")
             else:
-                # No Task found; store into appropriate in-memory cache so dashboard aggregation can still read it
-                if (task_type == 'keyword_search') or ('invites_sent' in result_obj):
-                    sid = data.get('search_id') or data.get('task_id') or task_id
-                    search_results_cache[sid] = {
-                        'type': 'client_search',
-                        'results': result_obj,
-                        'timestamp': datetime.now().isoformat()
-                    }
-                    logger.info(f"⚠️ Task not found; saved search result to cache for {sid}")
-                elif (task_type in ('process_inbox', 'process_inbox')) or ('auto_replied' in result_obj):
-                    pid = data.get('process_id') or task_id
-                    inbox_results[pid] = result_obj
-                    logger.info(f"⚠️ Task not found; saved inbox result to inbox_results cache for {pid}")
-                elif (task_type in ('outreach_campaign',)) or ('progress' in result_obj):
-                    cid = data.get('task_id') or data.get('campaign_id') or task_id
-                    campaign_results[cid] = result_obj
-                    logger.info(f"⚠️ Task not found; saved outreach result to campaign_results cache for {cid}")
-                else:
-                    # Generic fallback: put under search_results_cache using task_id
-                    search_results_cache[task_id] = {'type': 'unknown', 'results': result_obj, 'timestamp': datetime.now().isoformat()}
-                    logger.info(f"⚠️ Task not found; saved generic result to search_results_cache for {task_id}")
-
+                logger.info(f"✅ Persisted FINAL task result for task {task_id} (type={task_obj.task_type})")
+            
             return jsonify({'success': True, 'stored': True}), 200
-
-        # ------------------------------------------------------
-        # Backwards-compatible preview-mode: small "preview" reports
-        # used for real-time edit/skip/send UI (no DB persistence)
-        # ------------------------------------------------------
-        # If not a full task result, treat as the old preview message
-        message = data.get('message', '')
-        contact = data.get('contact', {})
-
-        # Update automation_status so UI can display edit/skip/send
-        automation_status['awaiting'] = True
-        automation_status['message'] = message
-        automation_status['current'] = {
-            'task_id': task_id,
-            'contact': contact,
-            'message': message,
-            'timestamp': datetime.utcnow().isoformat()
-        }
-
-        logger.info(f"✅ Stored short preview task report from client for {contact.get('name', '<unknown>')}")
-        return jsonify({'success': True, 'preview': True, 'task_id': task_id}), 200
+            
+        else:
+            # Task not found in DB (should not happen for inbox tasks)
+            # Store in cache as a fallback
+            if (task_type == 'keyword_search') or ('invites_sent' in result_obj):
+                search_results_cache[task_id] = {'results': result_obj}
+            elif (task_type == 'process_inbox') or ('auto_replied' in result_obj):
+                inbox_results[task_id] = result_obj
+            
+            logger.warning(f"⚠️ Task {task_id} not found in DB. Stored result in memory cache.")
+            return jsonify({'success': True, 'stored_in_cache': True}), 200
 
     except Exception as e:
         logger.error(f"api_report_task error: {e}", exc_info=True)
         return jsonify({'error': str(e)}), 500
-
 # Add to app.py
 @application.route('/api/task-result', methods=['POST'])
 def api_task_result():
@@ -1556,7 +1662,7 @@ def get_inbox_preview_by_process(process_id):
 def inbox_action():
     """
     Receives the user's decision (send/edit/skip) from the frontend
-    and queues it as a task for the client.
+    and queues it as a persistent task for the client.
     """
     user = get_current_user()
     data = request.json
@@ -1570,20 +1676,19 @@ def inbox_action():
 
     logger.info(f"User '{user.email}' took action '{action}' for inbox session '{session_id}'")
 
-    # Create a real-time task for the client, just like the campaign feature
-    task_payload = {
-        'id': f"inbox_action_{uuid.uuid4()}",
-        'type': 'inbox_action', # This type will be handled by client_logic.py
-        'params': {
+    # --- THIS IS THE FIX ---
+    # Create a persistent task instead of using the in-memory queue
+    task = Task(
+        user=user,
+        task_type='inbox_action',
+        params={
             'session_id': session_id,
             'action': action,
-            'message': message, # Will be null for 'skip'
-        }
-    }
-    
-    # Use the existing client_manager to queue the action
-    client_manager.user_tasks[str(user.id)].append(task_payload)
-    
+            'message': message,
+        },
+        status='queued'
+    )
+    task.save()
     
     if session_id in inbox_preview_states:
         inbox_preview_states[session_id]['awaiting_confirmation'] = False
@@ -1674,7 +1779,7 @@ def get_inbox_results(process_id):
 # Update the client ping endpoint to include inbox actions
 @application.route('/api/client-ping', methods=['POST'])
 def api_client_ping():
-    """Client heartbeat endpoint with inbox action support"""
+    """Client heartbeat endpoint."""
     try:
         auth = request.headers.get('Authorization', '')
         api_key = auth.replace('Bearer ', '').strip() if auth.startswith('Bearer ') else None
@@ -1692,17 +1797,13 @@ def api_client_ping():
         client_id = data.get('client_id')
         client_info = data.get('client_info', {})
         
-        # Check for active inbox sessions awaiting confirmation
+        # ... (keep all the inbox_preview_states logic here) ...
         active_inbox_sessions = data.get('active_inbox_sessions', [])
-        
-        # Process any inbox preview data from the client
         for session_data in active_inbox_sessions:
+             # ... (all this logic is fine) ...
             session_id = session_data.get('session_id')
             conversation = session_data.get('conversation')
-            
             if session_id and conversation:
-                # Store this for the dashboard to display
-                # You might want to track process_id mapping here
                 process_id = conversation.get('process_id') or session_id
                 inbox_preview_states[session_id] = {
                     'session_id': session_id,
@@ -1718,15 +1819,10 @@ def api_client_ping():
         # Update client status for monitoring
         client_manager.update_client_heartbeat(user_id, client_id, client_info)
         
-        # Get and clear queued actions for this user (including inbox actions)
-        actions = client_manager.get_user_tasks(user_id)
-        if actions:
-            logger.info(f"Delivering {len(actions)} actions to client for user {user_id}")
-
         return jsonify({
             'success': True, 
             'server_time': datetime.utcnow().isoformat(),
-            'actions': actions
+            'actions': []  # Always send an empty list now
         })
     
     except Exception as e:
