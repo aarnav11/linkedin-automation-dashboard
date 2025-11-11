@@ -13,6 +13,7 @@ _CLIENT_SECRET_FILE = os.path.join(_BASE_DIR, "client_secret.json")
 
 # --- THIS LIST IS NOW UPDATED ---
 SCOPES = [
+    'openid',
     'https://www.googleapis.com/auth/calendar',
     'https://www.googleapis.com/auth/gmail.send',
     'https://www.googleapis.com/auth/gmail.readonly',
