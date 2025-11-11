@@ -21,6 +21,7 @@ from mongoengine import connect
 from dotenv import load_dotenv
 import google_services
 import google.oauth2.credentials
+from werkzeug.middleware.proxy_fix import ProxyFix
 # Load environment variables from .env file
 load_dotenv()
 
@@ -44,6 +45,7 @@ campaign_controls = defaultdict(lambda: {'stop': False, 'action': None})
 
 application = Flask(__name__)
 application.secret_key = os.environ.get('SECRET_KEY', 'your-secret-key-here-change-this-in-production')
+application.wsgi_app = ProxyFix(application.wsgi_app, x_proto=1, x_host=1)
 
 # MongoDB Atlas connection
 MONGODB_URI = os.environ.get("MONGODB_URI", "mongodb+srv://Arnav-admin:YourActualPassword@linkedin-auto-users.qt8v57k.mongodb.net/?retryWrites=true&w=majority&appName=Linkedin-auto-users")
@@ -56,6 +58,10 @@ application.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file siz
 
 # Ensure upload folder exists
 os.makedirs(application.config['UPLOAD_FOLDER'], exist_ok=True)
+
+application.config['SESSION_COOKIE_SECURE'] = False 
+application.config['SESSION_COOKIE_HTTPONLY'] = True
+application.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
 
 def login_required(f):
     """Decorator to require login for protected routes"""
