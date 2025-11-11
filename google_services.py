@@ -1,4 +1,5 @@
 import os
+import json
 import google.oauth2.credentials
 from google_auth_oauthlib.flow import Flow
 from googleapiclient.discovery import build, Resource
@@ -12,68 +13,87 @@ _BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 _CLIENT_SECRET_FILE = os.path.join(_BASE_DIR, "client_secret.json")
 
 # --- THIS LIST IS NOW UPDATED ---
+def load_google_config():
+    """
+    Tries to load Google credentials from:
+    1. AWS Environment Variable (GOOGLE_CREDENTIALS_JSON)
+    2. Secret File on Disk (Render / Localhost)
+    """
+    # Priority 1: Check for Environment Variable (AWS Strategy)
+    env_config = os.environ.get('GOOGLE_CREDENTIALS_JSON')
+    if env_config:
+        try:
+            return json.loads(env_config)
+        except json.JSONDecodeError:
+            print("Error: GOOGLE_CREDENTIALS_JSON contains invalid JSON.")
+    
+    # Priority 2: Check for File (Render/Local Strategy)
+    if os.path.exists(_CLIENT_SECRET_FILE):
+        try:
+            with open(_CLIENT_SECRET_FILE, 'r') as f:
+                return json.load(f)
+        except Exception as e:
+            print(f"Error reading client_secret.json: {e}")
+
+    # Fallback: Return None if neither exists
+    return None
+
+_GOOGLE_CONFIG = load_google_config()
+
 SCOPES = [
     'openid',
     'https://www.googleapis.com/auth/calendar',
     'https://www.googleapis.com/auth/gmail.send',
     'https://www.googleapis.com/auth/gmail.readonly',
-    'https://www.googleapis.com/auth/userinfo.email',  # <-- ADDED
-    'https://www.googleapis.com/auth/userinfo.profile' # <-- ADDED
+    'https://www.googleapis.com/auth/userinfo.email', 
+    'https://www.googleapis.com/auth/userinfo.profile' 
 ]
 
 def create_google_auth_flow(redirect_uri: str) -> Flow:
-    """
-    Creates and returns a Google OAuth Flow object.
-    """
-    flow = Flow.from_client_secrets_file(
-        _CLIENT_SECRET_FILE,
+    if not _GOOGLE_CONFIG:
+        raise ValueError("Google Credentials not found. Check GOOGLE_CREDENTIALS_JSON env var or client_secret.json file.")
+
+    # Standardize to use from_client_config (works for both file content and env var content)
+    flow = Flow.from_client_config(
+        _GOOGLE_CONFIG,
         scopes=SCOPES,
         redirect_uri=redirect_uri
     )
     
-    # This tells Google that we want a refresh_token
-    #flow.authorization_url(access_type='offline', prompt='consent')
-    
     return flow
 
 def build_service_from_user(user: User, service_name: str, service_version: str) -> Resource | None:
-    """
-    Builds and returns an authenticated Google API service client for a user.
-    
-    Returns None if the user is not authenticated with Google.
-    """
     if not user.google_refresh_token:
         print(f"User {user.email} does not have a Google refresh token.")
         return None
+    
+    if not _GOOGLE_CONFIG:
+         print("Cannot build service: Google Configuration is missing.")
+         return None
 
     try:
-        # Create credentials from the stored refresh token
+        # Safely extract credentials from the loaded dictionary
+        # Support both 'web' and 'installed' formats just in case
+        config_root = _GOOGLE_CONFIG.get('web') or _GOOGLE_CONFIG.get('installed')
+        
+        if not config_root:
+            print("Error: Invalid client config format (missing 'web' or 'installed' key)")
+            return None
+
         credentials = google.oauth2.credentials.Credentials(
-            token=None,  # No access token needed; it will be refreshed
+            token=None, 
             refresh_token=user.google_refresh_token,
             token_uri='https://oauth2.googleapis.com/token',
-            client_id=None,  # Will be loaded from client_secret.json
-            client_secret=None, # Will be loaded from client_secret.json
+            client_id=config_root.get('client_id'),
+            client_secret=config_root.get('client_secret'),
             scopes=user.google_scopes
         )
         
-        # We need to load client_id and client_secret for the refresh to work
-        # This is a bit of a workaround for the Credentials object
-        import json
-        with open(_CLIENT_SECRET_FILE, 'r') as f:
-            secrets = json.load(f).get('web')
-            credentials.client_id = secrets.get('client_id')
-            credentials.client_secret = secrets.get('client_secret')
-
-        # Build the service
         service = build(
             service_name,
             service_version,
             credentials=credentials
         )
-        
-        # The credentials object will automatically refresh the access token
-        # if it's expired or missing, using the refresh token.
         
         return service
         
