@@ -12,3 +12,4 @@ gunicorn
 jinja2>=3.0.0
 python-dotenv>=0.20.0
 mongoengine
+google-auth-oauthlib==1.2.1
