@@ -31,7 +31,7 @@ def create_google_auth_flow(redirect_uri: str) -> Flow:
     )
     
     # This tells Google that we want a refresh_token
-    flow.authorization_url(access_type='offline', prompt='consent')
+    #flow.authorization_url(access_type='offline', prompt='consent')
     
     return flow
 

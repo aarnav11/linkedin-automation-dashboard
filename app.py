@@ -2062,12 +2062,15 @@ def authorize_google():
     flow = google_services.create_google_auth_flow(redirect_uri)
     
     # Generate the authorization URL and store the state for CSRF protection
-    authorization_url, state = flow.authorization_url()
+    authorization_url, state = flow.authorization_url(
+        access_type='offline',
+        prompt='consent',
+    )
     
     # Store the state in the user's session
     session['google_oauth_state'] = state
     
-    print(f"Redirecting user to: {authorization_url}")
+    print(f"Redirecting user to: {authorization_url} (state={state})")
     return redirect(authorization_url)
 
 
