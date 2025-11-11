@@ -1,5 +1,5 @@
 from sys import platform
-from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify
+from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify, url_for
 import os
 import pandas as pd
 from werkzeug.utils import secure_filename
@@ -19,7 +19,8 @@ from urllib.parse import urlparse
 import socket
 from mongoengine import connect
 from dotenv import load_dotenv
-
+import google_services
+import google.oauth2.credentials
 # Load environment variables from .env file
 load_dotenv()
 
@@ -85,6 +86,8 @@ def linkedin_setup_required(f):
         return f(*args, **kwargs)
     decorated_function.__name__ = f.__name__
     return decorated_function
+
+
 
 class ClientManager:
     def __init__(self):
@@ -1455,6 +1458,120 @@ def api_report_task():
     except Exception as e:
         logger.error(f"api_report_task error: {e}", exc_info=True)
         return jsonify({'error': str(e)}), 500
+
+def get_user_from_api_key():
+    """Authenticates a user from the 'Authorization: Bearer <key>' header."""
+    auth = request.headers.get('Authorization', '')
+    api_key = auth.replace('Bearer ', '').strip() if auth.startswith('Bearer ') else None
+    
+    if not api_key:
+        return None
+    
+    user = User.objects(gemini_api_key=api_key).first()
+    return user
+
+@application.route('/api/google/free-slots', methods=['GET'])
+def api_google_free_slots():
+    """
+    Finds and returns free calendar slots for the authenticated user.
+    """
+    user = get_user_from_api_key()
+    if not user:
+        return jsonify({'error': 'Invalid API key'}), 403
+        
+    if not user.google_refresh_token:
+        return jsonify({'error': 'Google Account not connected for this user.'}), 400
+
+    try:
+        duration = int(request.args.get('duration_minutes', 30))
+        days = int(request.args.get('days_ahead', 7))
+        
+        # 
+        slots = google_services.find_free_slots(
+            user=user, 
+            duration_minutes=duration, 
+            days_ahead=days
+        )
+        
+        # Convert datetime objects to ISO strings for JSON
+        slot_strings = [slot.isoformat() for slot in slots]
+        
+        return jsonify({'success': True, 'slots': slot_strings})
+        
+    except Exception as e:
+        logger.error(f"Error finding free slots: {e}")
+        return jsonify({'error': str(e)}), 500
+    
+@application.route('/api/google/book-meeting', methods=['POST'])
+def api_google_book_meeting():
+    """
+    Books a new event on the user's calendar.
+    """
+    user = get_user_from_api_key()
+    if not user:
+        return jsonify({'error': 'Invalid API key'}), 403
+
+    data = request.json
+    try:
+        summary = data.get('summary')
+        start_time_str = data.get('start_time')
+        end_time_str = data.get('end_time')
+        attendee_email = data.get('attendee_email')
+
+        if not all([summary, start_time_str, end_time_str, attendee_email]):
+            return jsonify({'error': 'Missing required fields (summary, start_time, end_time, attendee_email)'}), 400
+
+        # Convert ISO strings back to datetime objects
+        start_dt = datetime.fromisoformat(start_time_str)
+        end_dt = datetime.fromisoformat(end_time_str)
+        
+        # 
+        event = google_services.create_event(
+            user=user,
+            summary=summary,
+            start_dt=start_dt,
+            end_dt=end_dt,
+            attendee_email=attendee_email
+        )
+        
+        meet_link = event.get('hangoutLink')
+        return jsonify({'success': True, 'event_id': event.get('id'), 'meet_link': meet_link})
+        
+    except Exception as e:
+        logger.error(f"Error creating event: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@application.route('/api/google/send-email', methods=['POST'])
+def api_google_send_email():
+    """
+    Sends an email from the user's Gmail account.
+    """
+    user = get_user_from_api_key()
+    if not user:
+        return jsonify({'error': 'Invalid API key'}), 403
+
+    data = request.json
+    try:
+        to_email = data.get('to_email')
+        subject = data.get('subject')
+        body = data.get('body')
+
+        if not all([to_email, subject, body]):
+            return jsonify({'error': 'Missing required fields (to_email, subject, body)'}), 400
+        
+        # [cite: 13]
+        result = google_services.send_email(
+            user=user,
+            to_email=to_email,
+            subject=subject,
+            body=body
+        )
+        
+        return jsonify({'success': True, 'message_id': result.get('id')})
+        
+    except Exception as e:
+        logger.error(f"Error sending email: {e}")
+        return jsonify({'error': str(e)}), 500
 # Add to app.py
 @application.route('/api/task-result', methods=['POST'])
 def api_task_result():
@@ -1922,6 +2039,71 @@ def receive_search_results():
         logger.error(f"❌ Error receiving search results: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
+@application.route('/authorize-google')
+@login_required
+def authorize_google():
+    """
+    Redirects the user to Google's OAuth 2.0 consent screen.
+    """
+    user = get_current_user()
+    if not user:
+        return redirect(url_for('login'))
+
+    # Create the full, absolute URL for our callback
+    # _external=True is critical
+    redirect_uri = url_for('oauth2callback', _external=True)
+    
+    flow = google_services.create_google_auth_flow(redirect_uri)
+    
+    # Generate the authorization URL and store the state for CSRF protection
+    authorization_url, state = flow.authorization_url()
+    
+    # Store the state in the user's session
+    session['google_oauth_state'] = state
+    
+    print(f"Redirecting user to: {authorization_url}")
+    return redirect(authorization_url)
+
+
+@application.route('/oauth2callback')
+@login_required
+def oauth2callback():
+    """
+    Handles the callback from Google after user consent.
+    """
+    user = get_current_user()
+    if not user:
+        return redirect(url_for('login'))
+
+    # Verify the state to protect against CSRF
+    state = session.pop('google_oauth_state', None)
+    if state is None or state != request.args.get('state'):
+        flash('Invalid state. Authentication request denied.', 'error')
+        return redirect(url_for('settings'))
+
+    # Recreate the flow with the same redirect_uri
+    redirect_uri = url_for('oauth2callback', _external=True)
+    flow = google_services.create_google_auth_flow(redirect_uri)
+
+    try:
+        # Exchange the authorization code for credentials
+        # We pass the full request URL
+        flow.fetch_token(authorization_response=request.url)
+        
+        credentials = flow.credentials
+        
+        # Save the all-important REFRESH token and scopes to the user
+        user.google_refresh_token = credentials.refresh_token
+        user.google_scopes = credentials.scopes
+        user.save()
+        
+        flash('Google Account connected successfully!', 'success')
+        
+    except Exception as e:
+        flash(f'Failed to connect Google Account: {str(e)}', 'error')
+        print(f"Error in oauth2callback: {e}")
+
+    return redirect(url_for('settings'))
 @application.route('/logout')
 @login_required
 def logout():

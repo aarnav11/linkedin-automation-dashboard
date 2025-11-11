@@ -1,4 +1,4 @@
-from mongoengine import Document, IntField, StringField, DateTimeField, DictField, BooleanField, ReferenceField
+from mongoengine import Document, IntField, StringField, DateTimeField, DictField, BooleanField, ReferenceField, ListField
 from flask_bcrypt import generate_password_hash, check_password_hash
 from datetime import datetime
 import uuid
@@ -14,7 +14,9 @@ class User(Document):
     created_at = DateTimeField(default=datetime.utcnow)
     updated_at = DateTimeField(default=datetime.utcnow)
     total_connections = IntField(default=0)
-    initial_connections = IntField(default=None)
+    initial_connections = IntField(null=True)
+    google_refresh_token = StringField()
+    google_scopes = ListField(StringField())
     # LinkedIn Settings
     linkedin_email = StringField(max_length=120)
     linkedin_password = StringField(max_length=255)
@@ -22,6 +24,10 @@ class User(Document):
 
     # Temporary plain password storage for LinkedIn automation (not recommended for production)
     _linkedin_password_plain = None
+
+    meta = {
+        'collection': 'users'
+    }
 
     def set_password(self, password):
         """Hash and set password"""

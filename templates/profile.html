@@ -27,38 +27,45 @@
 
             <hr>
 
-            <h5 class="mt-4 mb-3"><i class="fab fa-linkedin me-2 text-primary"></i>LinkedIn & AI Configuration</h5>
+            <h5 class="mt-4 mb-3"><i class="fas fa-cogs me-2 text-primary"></i>Configuration Status</h5>
             
-            <div class="mb-3">
-                <strong>LinkedIn Email:</strong>
-                <span class="text-muted">{{ user_data.linkedin_email }}</span>
-            </div>
-            
-            <div class="mb-3">
-                <strong>Configuration Status:</strong>
-                {% if user_data.has_linkedin_setup %}
-                    <span class="badge bg-success"><i class="fas fa-check-circle me-1"></i> Complete</span>
-                {% else %}
-                    <span class="badge bg-warning text-dark"><i class="fas fa-exclamation-triangle me-1"></i> Incomplete</span>
-                    <p class="small text-muted mt-1">Please complete your setup in <a href="{{ url_for('settings') }}">Settings</a> to enable automation features.</p>
-                {% endif %}
-            </div>
+<div class="mb-3">
+    <strong>LinkedIn Email:</strong>
+    <span class="text-muted">{{ user_data.linkedin_email }}</span>
+</div>
 
-             <div class="mb-3">
-                <strong>Gemini API Key:</strong>
-                {% if user_data.has_gemini_key %}
-                    <span class="badge bg-success"><i class="fas fa-key me-1"></i> Set</span>
-                {% else %}
-                    <span class="badge bg-secondary"><i class="fas fa-times-circle me-1"></i> Not Set</span>
-                     <p class="small text-muted mt-1">An API key is required for AI features. Add it in <a href="{{ url_for('settings') }}">Settings</a>.</p>
-                {% endif %}
-            </div>
+<div class="mb-3">
+    <strong>Gemini API Key:</strong>
+    {% if user_data.has_gemini_key %}
+        <span class="badge bg-success"><i class="fas fa-key me-1"></i> Set</span>
+    {% else %}
+        <span class="badge bg-secondary"><i class="fas fa-times-circle me-1"></i> Not Set</span>
+    {% endif %}
+</div>
 
-             <div class="mt-4 text-center">
-                 <a href="{{ url_for('settings') }}" class="btn btn-primary">
-                    <i class="fas fa-cog me-1"></i> Go to Settings
-                </a>
-            </div>
+<div class="mb-3">
+    <strong>Google Account:</strong>
+    {% if user.google_refresh_token %}
+        <span class="badge bg-success"><i class="fas fa-check-circle me-1"></i> Connected</span>
+    {% else %}
+        <span class="badge bg-secondary"><i class="fas fa-times-circle me-1"></i> Not Connected</span>
+    {% endif %}
+</div>
+
+ <div class="mb-3">
+    <strong>HubSpot Account:</strong>
+    {% if user.hubspot_access_token %}
+        <span class="badge bg-success"><i class="fas fa-check-circle me-1"></i> Connected</span>
+    {% else %}
+        <span class="badge bg-secondary"><i class="fas fa-times-circle me-1"></i> Not Connected</span>
+    {% endif %}
+</div>
+
+{% if not user_data.has_linkedin_setup or not user.google_refresh_token or not user.hubspot_access_token %}
+    <p class="small text-muted mt-2">
+        Complete your setup in <a href="{{ url_for('settings') }}">Settings</a> to enable all automation features.
+    </p>
+{% endif %}
 
         </div>
     </div>

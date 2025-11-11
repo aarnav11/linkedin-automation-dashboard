@@ -49,5 +49,55 @@
       </form>
     </div>
   </div>
+
+  <div class="card shadow mt-4">
+    <div class="card-header bg-primary text-white">
+      <h3><i class="fas fa-plug me-2"></i>Integrations</h3>
+    </div>
+    <div class="card-body">
+      <p class="text-muted">
+        Connect your Google and HubSpot accounts to unlock full automation 
+        for calendar booking, email sending, and lead management.
+      </p>
+      
+      <ul class="list-group">
+        
+        <li class="list-group-item d-flex justify-content-between align-items-center">
+          <div>
+            <img src="https://upload.wikimedia.org/wikipedia/commons/c/c1/Google_%22G%22_logo.svg" alt="Google" style="width: 24px; height: 24px; margin-right: 10px; vertical-align: middle;">
+            <strong style="vertical-align: middle;">Google Account (Calendar & Gmail)</strong>
+          </div>
+          
+          {% if user.google_refresh_token %}
+            <span class="badge bg-success" style="padding: 0.5rem 0.75rem;">
+                <i class="fas fa-check-circle me-1"></i> Connected
+            </span>
+            {% else %}
+            <a href="{{ url_for('authorize_google') }}" class="btn btn-primary btn-sm">
+                <i class="fas fa-link me-1"></i> Connect
+            </a>
+          {% endif %}
+        </li>
+        {#
+        <li class="list-group-item d-flex justify-content-between align-items-center">
+          <div>
+            <img src="https://upload.wikimedia.org/wikipedia/commons/9/9f/HubSpot_Logo.svg" alt="HubSpot" style="width: 24px; height: 24px; margin-right: 10px; vertical-align: middle;">
+            <strong style="vertical-align: middle;">HubSpot (CRM)</strong>
+          </div>
+          
+          {% if user.hubspot_access_token %}
+            <span class="badge bg-success" style="padding: 0.5rem 0.75rem;">
+                <i class="fas fa-check-circle me-1"></i> Connected
+            </span>
+            {% else %}
+            <a href="{{ url_for('authorize_hubspot') }}" class="btn btn-sm" style="background-color: #ff7a59; border-color: #ff7a59; color: white;">
+                <i class="fas fa-link me-1"></i> Connect
+            </a>
+          {% endif %}
+        </li>
+          #}
+      </ul>
+    </div>
+  </div>
 </div>
 {% endblock %}
