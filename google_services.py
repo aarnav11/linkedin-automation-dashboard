@@ -204,11 +204,11 @@ def find_free_slots(user: User, duration_minutes: int = 30, days_ahead: int = 7)
         return []
 
 
-def create_event(user: User, summary: str, start_dt: datetime, end_dt: datetime, attendee_email: str) -> dict:
+def create_event(user: User, summary: str, start_dt: datetime, end_dt: datetime, attendee_email: str = None, description: str = None) -> dict:
     """
-    Creates a new event on the user's primary calendar with a Google Meet link
-    and sends an invitation to the attendee.
-    
+    Creates a new event on the user's primary calendar. 
+    If attendee_email is provided, it sends an invite.
+    If not, it just creates an appointment for the user.
     """
     try:
         service = build_service_from_user(user, 'calendar', 'v3')
@@ -217,6 +217,7 @@ def create_event(user: User, summary: str, start_dt: datetime, end_dt: datetime,
             
         event = {
             'summary': summary,
+            'description': description or "",
             'start': {
                 'dateTime': start_dt.isoformat(),
                 'timeZone': 'UTC',
@@ -225,10 +226,8 @@ def create_event(user: User, summary: str, start_dt: datetime, end_dt: datetime,
                 'dateTime': end_dt.isoformat(),
                 'timeZone': 'UTC',
             },
-            'attendees': [
-                {'email': attendee_email},
-                {'email': 'me'} # 'me' refers to the user
-            ],
+            # Default attendees list always includes the user ('me') implicitly by Google
+            'attendees': [],
             'conferenceData': {
                 'createRequest': {
                     'requestId': str(uuid.uuid4()),
@@ -241,12 +240,16 @@ def create_event(user: User, summary: str, start_dt: datetime, end_dt: datetime,
                 'useDefault': True,
             },
         }
+
+        # Only add the guest if a valid email is provided
+        if attendee_email and "@" in attendee_email:
+            event['attendees'].append({'email': attendee_email})
         
         created_event = service.events().insert(
             calendarId='primary',
             body=event,
-            conferenceDataVersion=1, # This is required to create the Meet link
-            sendUpdates='all' # This sends the invite to the attendee
+            conferenceDataVersion=1,
+            sendUpdates='all' if attendee_email else 'none' # Don't send emails if no guest
         ).execute()
         
         print(f"Event created successfully. ID: {created_event.get('id')}")

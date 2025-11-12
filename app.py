@@ -1522,22 +1522,25 @@ def api_google_book_meeting():
         summary = data.get('summary')
         start_time_str = data.get('start_time')
         end_time_str = data.get('end_time')
-        attendee_email = data.get('attendee_email')
+        # These are now optional
+        attendee_email = data.get('attendee_email') 
+        description = data.get('description')
 
-        if not all([summary, start_time_str, end_time_str, attendee_email]):
-            return jsonify({'error': 'Missing required fields (summary, start_time, end_time, attendee_email)'}), 400
+        # Validate only the critical fields
+        if not all([summary, start_time_str, end_time_str]):
+            return jsonify({'error': 'Missing required fields (summary, start_time, end_time)'}), 400
 
         # Convert ISO strings back to datetime objects
         start_dt = datetime.fromisoformat(start_time_str)
         end_dt = datetime.fromisoformat(end_time_str)
         
-        # 
         event = google_services.create_event(
             user=user,
             summary=summary,
             start_dt=start_dt,
             end_dt=end_dt,
-            attendee_email=attendee_email
+            attendee_email=attendee_email, # Pass it (could be None)
+            description=description       # Pass the description
         )
         
         meet_link = event.get('hangoutLink')
