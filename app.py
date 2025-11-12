@@ -2113,6 +2113,34 @@ def oauth2callback():
         print(f"Error in oauth2callback: {e}")
 
     return redirect(url_for('settings'))
+
+@application.route('/calendar')
+@login_required
+def calendar_view():
+    """Render the Calendar/Scheduler page"""
+    user = get_current_user()
+    # Check if Google is connected
+    google_connected = bool(user.google_refresh_token)
+    return render_template('calendar.html', user=user, google_connected=google_connected)
+
+@application.route('/api/google/upcoming-events', methods=['GET'])
+def api_get_upcoming_events():
+    """Fetch upcoming 10 events from Google Calendar"""
+    user = get_user_from_api_key() # OR use session based auth if calling from frontend JS
+    if not user and 'user_id' in session:
+         user = User.objects.get(id=session['user_id'])
+         
+    if not user or not user.google_refresh_token:
+        return jsonify({'error': 'Google not connected'}), 401
+
+    try:
+        # You will need to add 'list_events' to your google_services.py
+        # passing max_results=10
+        events = google_services.list_upcoming_events(user, max_results=10)
+        return jsonify({'success': True, 'events': events})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    
 @application.route('/logout')
 @login_required
 def logout():
