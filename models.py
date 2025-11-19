@@ -17,6 +17,11 @@ class User(Document):
     initial_connections = IntField(null=True)
     google_refresh_token = StringField()
     google_scopes = ListField(StringField())
+    # HubSpot Settings
+    hubspot_access_token = StringField()
+    hubspot_refresh_token = StringField()
+    hubspot_token_expires_at = DateTimeField()
+    hubspot_portal_id = StringField()
     # LinkedIn Settings
     linkedin_email = StringField(max_length=120)
     linkedin_password = StringField(max_length=255)

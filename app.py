@@ -22,6 +22,7 @@ from dotenv import load_dotenv
 import google_services
 import google.oauth2.credentials
 from werkzeug.middleware.proxy_fix import ProxyFix
+import hubspot_services
 # Load environment variables from .env file
 load_dotenv()
 
@@ -2143,6 +2144,63 @@ def api_get_upcoming_events():
         return jsonify({'success': True, 'events': events})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+    
+
+@application.route('/authorize-hubspot')
+@login_required
+def authorize_hubspot():
+    """Redirects user to HubSpot to approve the app."""
+    auth_url = hubspot_services.get_auth_url()
+    return redirect(auth_url)
+
+@application.route('/oauth2callback-hubspot')
+@login_required
+def oauth2callback_hubspot():
+    """Handles the return from HubSpot."""
+    user = get_current_user()
+    code = request.args.get('code')
+    
+    if not code:
+        flash('Failed to authorize HubSpot: No code returned.', 'error')
+        return redirect(url_for('settings'))
+        
+    try:
+        tokens = hubspot_services.exchange_code_for_token(code)
+        
+        if 'access_token' in tokens:
+            user.hubspot_access_token = tokens['access_token']
+            user.hubspot_refresh_token = tokens['refresh_token']
+            # Calculate expiry
+            expires_in = tokens.get('expires_in', 1800)
+            user.hubspot_token_expires_at = datetime.utcnow() + timedelta(seconds=expires_in)
+            user.save()
+            
+            flash('HubSpot connected successfully!', 'success')
+        else:
+            flash(f"HubSpot Error: {tokens.get('message')}", 'error')
+            
+    except Exception as e:
+        flash(f'An error occurred connecting HubSpot: {str(e)}', 'error')
+        
+    return redirect(url_for('settings'))
+
+# Optional: Test Endpoint to manually create a lead
+@application.route('/test-hubspot-lead', methods=['POST'])
+@login_required
+def test_hubspot_lead():
+    user = get_current_user()
+    if not user.hubspot_access_token:
+        return jsonify({'error': 'HubSpot not connected'}), 400
+        
+    data = request.json
+    result = hubspot_services.create_contact(
+        user=user,
+        email=data.get('email'),
+        first_name=data.get('first_name'),
+        last_name=data.get('last_name'),
+        linkedin_url=data.get('linkedin_url')
+    )
+    return jsonify(result)
     
 @application.route('/logout')
 @login_required

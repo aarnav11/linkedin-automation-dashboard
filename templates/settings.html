@@ -62,40 +62,45 @@
       
       <ul class="list-group">
         
-        <li class="list-group-item d-flex justify-content-between align-items-center">
-          <div>
-            <img src="https://upload.wikimedia.org/wikipedia/commons/c/c1/Google_%22G%22_logo.svg" alt="Google" style="width: 24px; height: 24px; margin-right: 10px; vertical-align: middle;">
-            <strong style="vertical-align: middle;">Google Account (Calendar & Gmail)</strong>
+        <li class="list-group-item d-flex justify-content-between align-items-center mb-3 border rounded py-3">
+          <div class="d-flex align-items-center">
+            <img src="https://upload.wikimedia.org/wikipedia/commons/c/c1/Google_%22G%22_logo.svg" alt="Google" style="width: 40px; height: 40px; margin-right: 15px;">
+            <div>
+                <strong class="d-block" style="font-size: 1.1rem;">Google Account</strong>
+                <span class="text-muted small">Calendar & Gmail</span>
+            </div>
           </div>
-          
-          {% if user.google_refresh_token %}
-            <span class="badge bg-success" style="padding: 0.5rem 0.75rem;">
+        
+        {% if user.google_refresh_token %}
+            <span class="badge bg-success rounded-pill px-3 py-2">
                 <i class="fas fa-check-circle me-1"></i> Connected
             </span>
             {% else %}
-            <a href="{{ url_for('authorize_google') }}" class="btn btn-primary btn-sm">
+            <a href="{{ url_for('authorize_google') }}" class="btn btn-primary">
                 <i class="fas fa-link me-1"></i> Connect
             </a>
           {% endif %}
         </li>
-        {#
-        <li class="list-group-item d-flex justify-content-between align-items-center">
-          <div>
-            <img src="https://upload.wikimedia.org/wikipedia/commons/9/9f/HubSpot_Logo.svg" alt="HubSpot" style="width: 24px; height: 24px; margin-right: 10px; vertical-align: middle;">
-            <strong style="vertical-align: middle;">HubSpot (CRM)</strong>
+
+      <li class="list-group-item d-flex justify-content-between align-items-center border rounded py-3">
+          <div class="d-flex align-items-center">
+            <img src="https://upload.wikimedia.org/wikipedia/commons/3/3f/HubSpot_Logo.svg" alt="HubSpot" style="width: 100px; height: auto; margin-right: 15px;">
+            <div>
+                <strong class="d-block" style="font-size: 1.1rem;">HubSpot CRM</strong>
+                <span class="text-muted small">Lead Management</span>
+            </div>
           </div>
-          
-          {% if user.hubspot_access_token %}
-            <span class="badge bg-success" style="padding: 0.5rem 0.75rem;">
+        
+        {% if user.hubspot_access_token %}
+            <span class="badge bg-success rounded-pill px-3 py-2">
                 <i class="fas fa-check-circle me-1"></i> Connected
             </span>
             {% else %}
-            <a href="{{ url_for('authorize_hubspot') }}" class="btn btn-sm" style="background-color: #ff7a59; border-color: #ff7a59; color: white;">
+            <a href="{{ url_for('authorize_hubspot') }}" class="btn" style="background-color: #ff7a59; border-color: #ff7a59; color: white;">
                 <i class="fas fa-link me-1"></i> Connect
             </a>
           {% endif %}
         </li>
-          #}
       </ul>
     </div>
   </div>
