@@ -1,118 +1,202 @@
 {% extends "base.html" %}
-{% block title %}Client Setup - LinkSprig{% endblock %}
+{% block title %}Desktop App Setup - LinkSprig{% endblock %}
 
 {% block content %}
 <style>
-    /* Helper class for the copy button */
-    .copy-api-key {
+    /* Modern Card Styling */
+    .setup-card {
+        border: none;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.05);
+        border-radius: 1rem;
+        overflow: hidden;
+    }
+    .setup-header {
+        background: linear-gradient(135deg, var(--color-primary) 0%, #4a90e2 100%);
+        color: white;
+        padding: 2rem;
+        text-align: center;
+    }
+    .setup-header h4 {
+        font-weight: 700;
+        margin-bottom: 0.5rem;
+    }
+    .setup-header p {
+        opacity: 0.9;
+        margin-bottom: 0;
+    }
+
+    /* Step Timeline Styling */
+    .step-list {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+        position: relative;
+    }
+    .step-item {
+        display: flex;
+        gap: 1rem;
+        padding-bottom: 1.5rem;
+        position: relative;
+    }
+    .step-item:last-child {
+        padding-bottom: 0;
+    }
+    .step-item:not(:last-child)::before {
+        content: '';
+        position: absolute;
+        left: 15px; /* Center of the circle */
+        top: 35px;
+        bottom: 0;
+        width: 2px;
+        background-color: var(--color-border);
+    }
+    .step-number {
+        flex-shrink: 0;
+        width: 32px;
+        height: 32px;
+        background-color: var(--color-background);
+        border: 2px solid var(--color-primary);
+        color: var(--color-primary);
+        border-radius: 50%;
         display: flex;
         align-items: center;
-        gap: 0.5rem;
-        padding: 0.75rem 1rem;
-        background-color: var(--color-background);
-        border: 1px solid var(--color-border);
-        border-radius: var(--border-radius);
-        font-family: monospace;
-        font-size: 1rem;
+        justify-content: center;
+        font-weight: 700;
+        z-index: 1;
+    }
+    .step-content h6 {
+        margin-bottom: 0.25rem;
+        font-weight: 600;
+    }
+    .step-content p {
+        font-size: 0.9rem;
         color: var(--color-text-secondary);
+        margin-bottom: 0;
+    }
+
+    /* API Key Box Styling */
+    .api-key-box {
+        background-color: #f8f9fa;
+        border: 1px dashed var(--color-border);
+        border-radius: 0.75rem;
+        padding: 1.5rem;
+        margin-top: 1.5rem;
+    }
+    html.dark .api-key-box {
+        background-color: #1a1d21;
+    }
+    .key-display-group {
+        display: flex;
+        gap: 0.5rem;
+        background: var(--color-background);
+        border: 1px solid var(--color-border);
+        padding: 0.5rem;
+        border-radius: 0.5rem;
+        margin-top: 0.5rem;
     }
     .api-key-text {
         flex-grow: 1;
+        font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+        font-size: 0.9rem;
+        color: var(--color-text);
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
+        padding: 0.4rem;
     }
-    .status-badge {
-        font-size: 0.9rem;
-        font-weight: 600;
-        padding: 0.25em 0.6em;
-        border-radius: 0.25rem;
+
+    /* Right Column Action Zone */
+    .action-zone {
+        background-color: var(--color-background-secondary); /* slightly distinct bg */
+        height: 100%;
+        padding: 2rem;
+        border-left: 1px solid var(--color-border);
     }
-    .status-badge-success {
-        color: var(--color-success);
-        background-color: #e6f6e9;
-    }
-    .status-badge-danger {
-        color: var(--color-danger);
-        background-color: #fdecea;
-    }
-    html.dark .status-badge-success {
-        background-color: #1a3c22;
-    }
-    html.dark .status-badge-danger {
-        background-color: #392224;
+    @media (max-width: 768px) {
+        .action-zone { border-left: none; border-top: 1px solid var(--color-border); }
     }
 </style>
 
-<div class="container">
-    <div class="card">
-        <div class="card-header">
-            <h4><i class="fas fa-desktop"></i> Local Client Setup</h4>
+<div class="container py-4">
+    <div class="card setup-card">
+        <div class="setup-header">
+            <h4><i class="fas fa-laptop-house me-2"></i> Connect Desktop App</h4>
+            <p>Securely link your local environment to the dashboard to start automation.</p>
         </div>
-        <div class="card-body">
-            <div class="alert alert-info">
-                <h5><i class="fas fa-info-circle"></i> Why do I need a local client?</h5>
-                <p>LinkedIn automation runs in a real browser to keep your account safe. The local client runs on your computer, connects securely to this dashboard, and polls for new tasks (like sending messages or connection requests) to execute on your behalf.</p>
+
+        <div class="row g-0">
+            <div class="col-md-7 p-4 p-lg-5">
+                <h5 class="mb-4">Setup Instructions</h5>
+                
+                <ul class="step-list">
+                    <li class="step-item">
+                        <div class="step-number">1</div>
+                        <div class="step-content">
+                            <h6>Download & Install</h6>
+                            <p>Download the LinkSprig client for Windows using the button on the right.</p>
+                        </div>
+                    </li>
+                    <li class="step-item">
+                        <div class="step-number">2</div>
+                        <div class="step-content">
+                            <h6>Launch Application</h6>
+                            <p>Open the installed application on your desktop.</p>
+                        </div>
+                    </li>
+                    <li class="step-item">
+                        <div class="step-number">3</div>
+                        <div class="step-content">
+                            <h6>Enter Credentials</h6>
+                            <p>Input your LinkedIn email and password in the app settings.</p>
+                        </div>
+                    </li>
+                    <li class="step-item">
+                        <div class="step-number">4</div>
+                        <div class="step-content">
+                            <h6>Authenticate</h6>
+                            <p>Copy the <strong>API Key</strong> provided on this page and paste it into the application to link your account.</p>
+                        </div>
+                    </li>
+                </ul>
+
+                <div class="mt-4 p-3 rounded bg-light-info border border-info-subtle">
+                    <div class="d-flex gap-3">
+                        <i class="fas fa-shield-alt text-info mt-1"></i>
+                        <div>
+                            <strong class="text-dark">Why is this required?</strong>
+                            <p class="mb-0 small text-muted">
+                                To keep your account safe, automation runs locally on your machine using your real browser fingerprint. This dashboard simply orchestrates the tasks.
+                            </p>
+                        </div>
+                    </div>
+                </div>
             </div>
 
-            <div class="page-grid mb-4">
-                <div class="card">
-                    <div class="card-header">
-                        <h5><i class="fas fa-satellite-dish"></i> Client Status</h5>
-                    </div>
-                    <div class="card-body text-center">
-                        <div id="client-status-icon" class="fa-3x mb-2">
-                            <i class="fas fa-circle-notch fa-spin text-muted"></i>
-                        </div>
-                        <p id="client-status-text" style="font-weight: 600;" class="mb-1">Checking...</p>
-                        <small id="client-status-last-seen" class="text-muted">Waiting for first check</small>
+            <div class="col-md-5 action-zone d-flex flex-column justify-content-center">
+                
+                <div class="text-center mb-4">
+                    <h5 class="mb-3">Get the App</h5>
+                    <button class="btn btn-primary btn-lg w-100 shadow-sm" onclick="downloadClient()">
+                        <i class="fab fa-windows me-2"></i> Download for Windows
+                    </button>
+                    <div class="mt-2">
+                        <small class="text-muted">macOS & Linux versions coming soon</small>
                     </div>
                 </div>
 
-                <div class="card">
-                    <div class="card-header">
-                        <h5><i class="fas fa-download"></i> Step 1: Download Client</h5>
-                    </div>
-                    <div class="card-body text-center">
-                        <p>Download the local client for your computer. (Only Windows is currently supported).</p>
-                        <button class="btn btn-primary btn-lg btn-block mb-2" onclick="downloadClient()">
-                            <i class="fab fa-windows me-2"></i> Download for Windows
+                <div class="api-key-box">
+                    <label class="small text-uppercase fw-bold text-muted mb-1">Your Unique API Key</label>
+                    <p class="small text-muted mb-2">Paste this into the desktop app.</p>
+                    
+                    <div class="key-display-group">
+                        <span class="api-key-text" id="api-key-display">{{ api_key or 'API_KEY_NOT_FOUND' }}</span>
+                        <button class="btn btn-light btn-sm border" onclick="copyToClipboard('#api-key-display')" title="Copy to clipboard">
+                            <i class="fas fa-copy"></i>
                         </button>
-                        <small class="text-muted">macOS & Linux coming soon</small>
                     </div>
                 </div>
-            </div>
 
-            <div class="card">
-                <div class="card-header">
-                    <h5><i class="fas fa-cogs"></i> Step 2: Setup Instructions</h5>
-                </div>
-                <div class="card-body">
-                    <div class="page-grid">
-                        <div>
-                            <ol style="padding-left: 1.5rem; line-height: 2;">
-                                <li><strong>Download & Install:</strong> Run the installer you just downloaded.</li>
-                                <li><strong>Run Client:</strong> Open the LinkSprig client application.</li>
-                                <li><strong>Enter Credentials:</strong> In the client's settings, enter your LinkedIn Email & Password.</li>
-                                <li><strong>Enter API Key:</strong> Copy your unique API key from the box on the right and paste it into the client.</li>
-                                <li><strong>Start Client:</strong> Click "Save & Start" in the client.</li>
-                                <li><strong>Check Status:</strong> Come back here. The status above should change to <span class="status-badge status-badge-success">Connected</span>.</li>
-                            </ol>
-                        </div>
-                        <div>
-                            <h6>Your Unique API Key</h6>
-                            <p class="text-muted"><small>This key securely links your local client to your account. Keep it private.</small></p>
-                            <div class="copy-api-key">
-                                <span class="api-key-text" id="api-key-display">{{ api_key or 'API_KEY_NOT_FOUND' }}</span>
-                                <button class="btn btn-secondary btn-sm" onclick="copyToClipboard('#api-key-display')">
-                                    <i class="fas fa-copy"></i>
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
             </div>
-            
         </div>
     </div>
 </div>
@@ -121,7 +205,6 @@
 {% block scripts %}
 <script>
 function showAlert(type, message) {
-    // (This function is from your file, left unchanged)
     const category = (type === 'danger') ? 'error' : type;
     const icon = {
         'success': 'check-circle',
@@ -166,72 +249,5 @@ function downloadClient() {
         window.open(windowsUrl, '_blank');
     }
 }
-
-function formatTimeAgo(isoString) {
-    if (!isoString) return 'never';
-    
-    const date = new Date(isoString);
-    const seconds = Math.floor((new Date() - date) / 1000);
-    
-    let interval = seconds / 31536000;
-    if (interval > 1) return Math.floor(interval) + " years ago";
-    interval = seconds / 2592000;
-    if (interval > 1) return Math.floor(interval) + " months ago";
-    interval = seconds / 86400;
-    if (interval > 1) return Math.floor(interval) + " days ago";
-    interval = seconds / 3600;
-    if (interval > 1) return Math.floor(interval) + " hours ago";
-    interval = seconds / 60;
-    if (interval > 1) return Math.floor(interval) + " minutes ago";
-    
-    if (seconds < 10) return "just now";
-    return Math.floor(seconds) + " seconds ago";
-}
-
-function checkClientStatus() {
-    const iconEl = document.getElementById('client-status-icon');
-    const textEl = document.getElementById('client-status-text');
-    const lastSeenEl = document.getElementById('client-status-last-seen');
-
-    fetch('/api/client-status')
-        .then(response => {
-            if (!response.ok) {
-                throw new Error('Network response was not ok');
-            }
-            return response.json();
-        })
-        .then(data => {
-            if (data.active) {
-                // Client is connected and recently seen
-                iconEl.innerHTML = '<i class="fas fa-check-circle text-success"></i>';
-                textEl.innerHTML = 'Connected';
-                lastSeenEl.innerText = `Last seen: ${formatTimeAgo(data.last_seen)}`;
-            } else if (data.registered && !data.active) {
-                // Client is registered but not seen recently
-                iconEl.innerHTML = '<i class="fas fa-exclamation-triangle text-warning"></i>';
-                textEl.innerHTML = 'Disconnected';
-                lastSeenEl.innerText = `Last seen: ${formatTimeAgo(data.last_seen)}`;
-            } else {
-                // Client has never connected
-                iconEl.innerHTML = '<i class="fas fa-times-circle text-danger"></i>';
-                textEl.innerHTML = 'Not Connected';
-                lastSeenEl.innerText = 'No client activity detected.';
-            }
-        })
-        .catch(error => {
-            console.error('Error checking client status:', error);
-            iconEl.innerHTML = '<i class="fas fa-exclamation-circle text-danger"></i>';
-            textEl.innerHTML = 'Error';
-            lastSeenEl.innerText = 'Could not check status.';
-        });
-}
-
-// Run on page load
-document.addEventListener('DOMContentLoaded', () => {
-    checkClientStatus();
-    
-    // Set up a poller to check the status every 10 seconds
-    setInterval(checkClientStatus, 10000);
-});
 </script>
 {% endblock %}
