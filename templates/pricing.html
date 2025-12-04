@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+
+{% block title %}Upgrade Plan - LinkSprig{% endblock %}
+
+{% block content %}
+<div class="container py-5">
+    <div class="pricing-header p-3 pb-md-4 mx-auto text-center">
+        <h1 class="display-4 fw-normal">Upgrade Your Plan</h1>
+        <p class="fs-5 text-muted">
+            Unlock unlimited automation, advanced AI features, and priority support.
+        </p>
+    </div>
+
+    <div class="row row-cols-1 row-cols-md-3 mb-3 text-center">
+        <div class="col">
+            <div class="card mb-4 rounded-3 shadow-sm">
+                <div class="card-header py-3">
+                    <h4 class="my-0 fw-normal">Free Trial</h4>
+                </div>
+                <div class="card-body">
+                    <h1 class="card-title pricing-card-title">$0<small class="text-muted fw-light">/mo</small></h1>
+                    <ul class="list-unstyled mt-3 mb-4">
+                        <li>30 Days Access</li>
+                        <li>Basic Automation</li>
+                        <li>10 AI Messages/day</li>
+                        <li>Community Support</li>
+                    </ul>
+                    {% if user.subscription_status == 'trial' %}
+                        <button type="button" class="btn btn-lg btn-block btn-outline-primary" disabled>Current Plan</button>
+                        <p class="mt-2 text-muted small">Expires on {{ user.subscription_ends_at.strftime('%Y-%m-%d') }}</p>
+                    {% else %}
+                        <button type="button" class="btn btn-lg btn-block btn-outline-secondary" disabled>Expired</button>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <div class="col">
+            <div class="card mb-4 rounded-3 shadow-sm border-primary">
+                <div class="card-header py-3 text-white bg-primary border-primary">
+                    <h4 class="my-0 fw-normal">Pro</h4>
+                </div>
+                <div class="card-body">
+                    <h1 class="card-title pricing-card-title">$29<small class="text-muted fw-light">/mo</small></h1>
+                    <ul class="list-unstyled mt-3 mb-4">
+                        <li><strong>Unlimited</strong> Automation</li>
+                        <li>Advanced AI Inbox</li>
+                        <li>Unlimited Campaigns</li>
+                        <li>HubSpot Integration</li>
+                        <li>Priority Email Support</li>
+                    </ul>
+                    <a href="#" class="btn btn-lg btn-block btn-primary">Get Started</a>
+                </div>
+            </div>
+        </div>
+
+        <div class="col">
+            <div class="card mb-4 rounded-3 shadow-sm">
+                <div class="card-header py-3">
+                    <h4 class="my-0 fw-normal">Enterprise</h4>
+                </div>
+                <div class="card-body">
+                    <h1 class="card-title pricing-card-title">Custom</h1>
+                    <ul class="list-unstyled mt-3 mb-4">
+                        <li>Dedicated Account Manager</li>
+                        <li>Custom AI Models</li>
+                        <li>API Access</li>
+                        <li>White Labeling</li>
+                        <li>Team Management</li>
+                    </ul>
+                    <a href="{{ url_for('contact') }}" class="btn btn-lg btn-block btn-outline-primary">Contact Sales</a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

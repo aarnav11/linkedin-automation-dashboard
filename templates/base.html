@@ -226,6 +226,9 @@
                      <a href="{{ url_for('client_setup') }}" class="nav-link {% if request.endpoint == 'client_setup' %}active{% endif %}">
                         Client Setup
                     </a>
+                    <a href="{{ url_for('pricing') }}" class="nav-link {% if request.endpoint == 'pricing' %}active{% endif %}">
+                        Pricing
+                    </a>
                 </div>
 
                 <div class="profile-dropdown">
@@ -251,6 +254,10 @@
                             <i class="fas fa-user"></i>
                             <span>My Profile</span>
                         </a>
+                        <a href="{{ url_for('pricing') }}" class="dropdown-item">
+                            <i class="fas fa-credit-card"></i>
+                            <span>Subscription</span>
+                        </a>
                         <a href="{{ url_for('settings') }}" class="dropdown-item">
                             <i class="fas fa-cog"></i>
                             <span>Settings</span>
@@ -267,6 +274,20 @@
     </nav>
     {% endif %}
 
+    {% if session.user_id and get_current_user and now %}
+        {% set user = get_current_user() %}
+        {% if user and user.subscription_status == 'trial' and user.subscription_ends_at %}
+            {% set days_left = (user.subscription_ends_at - now()).days %}
+            
+            {% if days_left < 5 %}
+                <div class="alert alert-warning text-center m-0 rounded-0 border-0 shadow-sm">
+                    <i class="fas fa-clock me-2"></i> 
+                    <strong>Trial Ending Soon:</strong> You have {{ days_left }} days left in your free trial. 
+                    <a href="{{ url_for('pricing') }}" class="fw-bold text-dark text-decoration-underline ms-2">Upgrade Now</a>
+                </div>
+            {% endif %}
+        {% endif %}
+    {% endif %}
     <main class="main-content">
         {% with messages = get_flashed_messages(with_categories=true) %}
             {% if messages %}

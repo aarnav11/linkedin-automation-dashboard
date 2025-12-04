@@ -83,6 +83,16 @@ def get_current_user():
             return None
     return None
 
+# --- CONTEXT PROCESSOR FOR TEMPLATES ---
+# This makes 'get_current_user' and 'now' available in base.html
+@application.context_processor
+def inject_user_and_time():
+    return dict(
+        get_current_user=get_current_user,
+        now=datetime.utcnow
+    )
+# ---------------------------------------
+
 def linkedin_setup_required(f):
     """Decorator to require LinkedIn setup for automation features"""
     def decorated_function(*args, **kwargs):
@@ -542,7 +552,8 @@ def demo():
 @application.route('/pricing')
 def pricing():
     """Pricing page"""
-    return render_template('pricing.html')
+    user = get_current_user()
+    return render_template('pricing.html', user=user)
 
 @application.route('/features')
 def features():
@@ -1569,7 +1580,7 @@ def api_google_send_email():
         if not all([to_email, subject, body]):
             return jsonify({'error': 'Missing required fields (to_email, subject, body)'}), 400
         
-        # [cite: 13]
+        #
         result = google_services.send_email(
             user=user,
             to_email=to_email,
@@ -2076,6 +2087,36 @@ def authorize_google():
     
     print(f"Redirecting user to: {authorization_url} (state={state})")
     return redirect(authorization_url)
+
+@application.route('/deauthorize-google', methods=['POST'])
+@login_required
+def deauthorize_google():
+    """Disconnect Google Account"""
+    try:
+        user = get_current_user()
+        user.google_refresh_token = None
+        user.google_scopes = []
+        user.save()
+        flash('Google Account disconnected successfully.', 'info')
+    except Exception as e:
+        flash(f'Error disconnecting Google: {str(e)}', 'error')
+    return redirect(url_for('settings'))
+
+@application.route('/deauthorize-hubspot', methods=['POST'])
+@login_required
+def deauthorize_hubspot():
+    """Disconnect HubSpot Account"""
+    try:
+        user = get_current_user()
+        user.hubspot_access_token = None
+        user.hubspot_refresh_token = None
+        user.hubspot_token_expires_at = None
+        user.hubspot_portal_id = None
+        user.save()
+        flash('HubSpot Account disconnected successfully.', 'info')
+    except Exception as e:
+        flash(f'Error disconnecting HubSpot: {str(e)}', 'error')
+    return redirect(url_for('settings'))
 
 
 @application.route('/oauth2callback')

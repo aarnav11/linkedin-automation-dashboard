@@ -1,6 +1,6 @@
 from mongoengine import Document, IntField, StringField, DateTimeField, DictField, BooleanField, ReferenceField, ListField
 from flask_bcrypt import generate_password_hash, check_password_hash
-from datetime import datetime
+from datetime import datetime, timedelta
 import uuid
 
 
@@ -29,7 +29,9 @@ class User(Document):
 
     # Temporary plain password storage for LinkedIn automation (not recommended for production)
     _linkedin_password_plain = None
-
+    subscription_status = StringField(default='trial', required=True)
+    subscription_ends_at = DateTimeField(default=lambda: datetime.utcnow() + timedelta(days=30))
+    #stripe_customer_id = StringField()
     meta = {
         'collection': 'users'
     }
@@ -66,6 +68,18 @@ class User(Document):
     def get_full_name(self):
         """Get user's full name"""
         return f"{self.first_name} {self.last_name}"
+
+    def is_subscription_active(self):
+        """Check if user has time left (Trial OR Paid)"""
+        # If status is 'active' (paid), they are good
+        if self.subscription_status == 'active':
+            return True
+            
+        # If trial, check dates
+        if self.subscription_ends_at and self.subscription_ends_at > datetime.utcnow():
+            return True
+            
+        return False
 
     def to_dict(self):
         """Convert user to dictionary"""
