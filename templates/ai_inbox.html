@@ -3,63 +3,147 @@
 
 {% block content %}
 <style>
+    /* Button Wrapper to prevent layout shift */
     .button-wrapper {
-        /* This container holds the space, preventing layout shift */
         position: relative;
         display: inline-block;
-        /* Set a min-height or height if needed, but inline-block often suffices */
-    }
-    /* By default, stop button is hidden */
-    .button-wrapper #stop-inbox-btn {
-        display: none;
+        min-height: 50px;
     }
     
-    /* When .is-running is added, hide start and show stop */
-    .button-wrapper.is-running #start-inbox-btn {
-        display: none;
+    /* Toggle visibility states */
+    .button-wrapper #stop-inbox-btn { display: none; }
+    .button-wrapper.is-running #start-inbox-btn { display: none; }
+    .button-wrapper.is-running #stop-inbox-btn { display: block; }
+
+    /* Modern Platform Switcher Styles */
+    .platform-selector-container {
+        background: #f8f9fa;
+        border-radius: 50px;
+        padding: 5px;
+        display: inline-flex;
+        box-shadow: inset 0 2px 4px rgba(0,0,0,0.05);
+        border: 1px solid #e9ecef;
+        margin-bottom: 25px;
     }
-    .button-wrapper.is-running #stop-inbox-btn {
-        display: block;
+
+    .platform-option {
+        position: relative;
+    }
+
+    .platform-option input {
+        position: absolute;
+        opacity: 0;
+        cursor: pointer;
+        height: 0;
+        width: 0;
+    }
+
+    .platform-label {
+        display: flex;
+        align-items: center;
+        padding: 10px 25px;
+        border-radius: 40px;
+        cursor: pointer;
+        font-weight: 600;
+        color: #6c757d;
+        transition: all 0.3s ease;
+        user-select: none;
+        font-size: 0.95rem;
+    }
+
+    .platform-label i {
+        margin-right: 8px;
+        font-size: 1.1em;
+    }
+
+    /* Active State Styling */
+    .platform-option input:checked + .platform-label {
+        background: #fff;
+        color: #0d6efd;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.08);
+        transform: scale(1.02);
+    }
+    
+    /* Specific Colors for Platforms */
+    .platform-option input[value="linkedin"]:checked + .platform-label {
+        color: #0077b5; /* LinkedIn Blue */
+    }
+    .platform-option input[value="sales_navigator"]:checked + .platform-label {
+        color: #2D6175; /* Sales Nav Tealish */
+    }
+
+    /* Disable switcher when running */
+    .button-wrapper.is-running ~ .platform-selector-container,
+    .is-running .platform-selector-container {
+        opacity: 0.6;
+        pointer-events: none;
+        filter: grayscale(1);
     }
 </style>
 
 <div class="container mt-4">
-    <div class="card shadow-sm">
-        <div class="card-header d-flex align-items-center justify-content-between">
-            <h4 class="mb-0"><i class="fas fa-robot me-2"></i> AI Inbox Assistant</h4>
-            <span class="badge bg-primary rounded-pill">Interactive Mode</span>
+    <div class="card shadow-sm border-0">
+        <div class="card-header bg-white border-bottom-0 pt-4 pb-0 d-flex align-items-center justify-content-between">
+            <h4 class="mb-0 fw-bold text-dark"><i class="fas fa-robot text-primary me-2"></i> AI Inbox Assistant</h4>
+            <span class="badge bg-light text-dark border rounded-pill px-3 py-2"><i class="fas fa-magic me-1 text-warning"></i> Interactive Mode</span>
         </div>
-        <div class="card-body">
-            <div id="controls-section" class="text-center p-3">
-                <p class="text-muted">The assistant will find the next message needing a reply and generate a suggested response for your approval.</p>
+        
+        <div class="card-body pt-2">
+            <div id="controls-section" class="text-center p-4">
+                <p class="text-muted mb-4" style="max-width: 600px; margin: 0 auto;">
+                    Select your inbox source below. The assistant will scan for messages needing a reply and generate smart responses for your approval.
+                </p>
                 
-                <div class="button-wrapper" id="inbox-button-wrapper">
-                    <button class="btn btn-primary btn-lg shadow-sm" id="start-inbox-btn">
-                        <i class="fas fa-play-circle me-2"></i> Find Next Message
-                    </button>
-                    <button class="btn btn-danger btn-lg shadow-sm" id="stop-inbox-btn">
-                        <i class="fas fa-stop-circle me-2"></i> Stop Task
-                    </button>
+                <div class="platform-selector-container">
+                    <div class="platform-option">
+                        <input type="radio" name="inbox_platform" id="plat_linkedin" value="linkedin" checked>
+                        <label class="platform-label" for="plat_linkedin">
+                            <i class="fab fa-linkedin"></i> LinkedIn
+                        </label>
+                    </div>
+                    <div class="platform-option">
+                        <input type="radio" name="inbox_platform" id="plat_salesnav" value="sales_navigator">
+                        <label class="platform-label" for="plat_salesnav">
+                            <i class="far fa-compass"></i> Sales Navigator
+                        </label>
+                    </div>
                 </div>
 
+                <div class="mt-3"></div>
+
+                <div class="button-wrapper" id="inbox-button-wrapper">
+                    <button class="btn btn-primary btn-lg px-5 shadow-sm rounded-pill" id="start-inbox-btn">
+                        <i class="fas fa-play me-2"></i> Find Next Message
+                    </button>
+                    <button class="btn btn-danger btn-lg px-5 shadow-sm rounded-pill" id="stop-inbox-btn">
+                        <i class="fas fa-stop me-2"></i> Stop Task
+                    </button>
+                </div>
             </div>
 
-            <div id="status-section" class="mt-3" style="display: none;">
-                <div class="card bg-light shadow-sm">
-                    <div class="card-body">
-                        <div id="status-content" class="text-center"></div>
-                        <div class="row text-center mt-3">
-                            <div class="col">
-                                <div class="h4 text-success mb-0" id="replied-count">0</div>
-                                <small class="text-muted">Replied</small>
+            <div id="status-section" class="mt-4 mx-auto" style="display: none; max-width: 800px;">
+                <div class="card bg-light border-0 rounded-3">
+                    <div class="card-body p-4">
+                        <div id="status-content" class="text-center mb-4 fs-5"></div>
+                        
+                        <div class="row text-center g-3">
+                            <div class="col-4">
+                                <div class="p-3 bg-white rounded shadow-sm">
+                                    <div class="h3 text-success mb-0 fw-bold" id="replied-count">0</div>
+                                    <small class="text-muted text-uppercase fw-bold" style="font-size: 0.75rem; letter-spacing: 1px;">Replied</small>
+                                </div>
                             </div>
-                            <div class="col">
-                                <div class="h4 text-warning mb-0" id="skipped-count">0</div>
-                                <small class="text-muted">Skipped</small>
+                            <div class="col-4">
+                                <div class="p-3 bg-white rounded shadow-sm">
+                                    <div class="h3 text-warning mb-0 fw-bold" id="skipped-count">0</div>
+                                    <small class="text-muted text-uppercase fw-bold" style="font-size: 0.75rem; letter-spacing: 1px;">Skipped</small>
+                                </div>
                             </div>
-                             <div class="col">
-                                <div class="h4 text-danger mb-0" id="failed-count">0</div>
-                                <small class="text-muted">Failed</small>
+                             <div class="col-4">
+                                <div class="p-3 bg-white rounded shadow-sm">
+                                    <div class="h3 text-danger mb-0 fw-bold" id="failed-count">0</div>
+                                    <small class="text-muted text-uppercase fw-bold" style="font-size: 0.75rem; letter-spacing: 1px;">Errors</small>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -71,45 +155,74 @@
 
 <div class="modal fade" id="messagePreviewModal" tabindex="-1" aria-hidden="true" data-bs-backdrop="static" data-bs-keyboard="false">
     <div class="modal-dialog modal-xl modal-dialog-centered">
-        <div class="modal-content">
-            <div class="modal-header bg-primary text-white">
-                <h5 class="modal-title"><i class="fas fa-eye me-2"></i> Reply Preview & Action</h5>
+        <div class="modal-content border-0 shadow-lg">
+            <div class="modal-header bg-dark text-white border-bottom-0">
+                <h5 class="modal-title"><i class="fas fa-pen-fancy me-2"></i> Reply Preview</h5>
+                <span class="badge bg-warning text-dark ms-3">Action Required</span>
             </div>
-            <div class="modal-body">
-                <div class="row">
-                    <div class="col-md-5">
-                        <div class="card mb-3">
-                            <div class="card-header fw-bold">Contact Information</div>
+            <div class="modal-body bg-light">
+                <div class="row g-4">
+                    <div class="col-md-4">
+                        <div class="card border-0 shadow-sm h-100">
                             <div class="card-body">
-                                <p class="mb-1"><strong>Name:</strong> <span id="preview-name"></span></p>
-                                <p class="mb-1"><strong>Headline:</strong> <span id="preview-role"></span></p>
-                                <p class="mb-0"><strong>Profile:</strong> <a href="#" id="preview-linkedin" target="_blank" class="text-primary"><i class="fab fa-linkedin"></i> View Profile</a></p>
-                            </div>
-                        </div>
-                        <div class="card">
-                            <div class="card-header fw-bold">Recent Conversation History</div>
-                            <div class="card-body" style="max-height: 300px; overflow-y: auto;">
-                                <ul class="list-group list-group-flush" id="preview-history"></ul>
+                                <h6 class="text-uppercase text-muted fw-bold mb-3" style="font-size: 0.8rem;">Contact Details</h6>
+                                
+                                <div class="d-flex align-items-center mb-3">
+                                    <div class="bg-primary text-white rounded-circle d-flex align-items-center justify-content-center me-3" style="width: 40px; height: 40px; font-size: 1.2rem;">
+                                        <i class="fas fa-user"></i>
+                                    </div>
+                                    <div>
+                                        <h5 class="mb-0 fw-bold" id="preview-name">Loading...</h5>
+                                        <small class="text-muted" id="preview-role">Loading...</small>
+                                    </div>
+                                </div>
+                                
+                                <div class="d-grid gap-2 mb-4">
+                                    <a href="#" id="preview-linkedin" target="_blank" class="btn btn-outline-primary btn-sm rounded-pill">
+                                        <i class="fab fa-linkedin me-1"></i> View Profile
+                                    </a>
+                                </div>
+
+                                <hr class="my-3">
+                                
+                                <h6 class="text-uppercase text-muted fw-bold mb-3" style="font-size: 0.8rem;">Recent History</h6>
+                                <div class="conversation-history" style="max-height: 350px; overflow-y: auto; padding-right: 5px;">
+                                    <ul class="list-unstyled" id="preview-history"></ul>
+                                </div>
                             </div>
                         </div>
                     </div>
-                    <div class="col-md-7">
-                        <div class="card">
-                            <div class="card-header fw-bold d-flex justify-content-between align-items-center">
-                                <span>Suggested Reply (Editable)</span>
-                                <span class="badge bg-info" id="preview-intent"></span>
-                            </div>
-                            <div class="card-body">
-                                <textarea class="form-control" id="preview-message" rows="12"></textarea>
-                                <small class="form-text text-muted mt-1 float-end"><span id="message-length">0</span> / 300 characters</small>
+
+                    <div class="col-md-8">
+                        <div class="card border-0 shadow-sm h-100">
+                            <div class="card-body d-flex flex-column">
+                                <div class="d-flex justify-content-between align-items-center mb-3">
+                                    <h6 class="text-uppercase text-muted fw-bold mb-0" style="font-size: 0.8rem;">AI Suggested Reply</h6>
+                                    <span class="badge bg-info text-dark rounded-pill" id="preview-intent">General</span>
+                                </div>
+                                
+                                <div class="form-floating flex-grow-1 mb-2">
+                                    <textarea class="form-control border-0 bg-light" id="preview-message" style="height: 100%; min-height: 300px; font-size: 1.05rem; line-height: 1.6;"></textarea>
+                                    <label for="preview-message">Review and edit the message here...</label>
+                                </div>
+                                
+                                <div class="d-flex justify-content-between align-items-center mt-2">
+                                    <small class="text-muted"><i class="fas fa-info-circle me-1"></i> You can edit this text before sending.</small>
+                                    <small class="text-muted"><span id="message-length">0</span> / 300 chars</small>
+                                </div>
                             </div>
                         </div>
                     </div>
                 </div>
             </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" id="confirm-skip"><i class="fas fa-forward me-2"></i>Skip Reply</button>
-                <button type="button" class="btn btn-success" id="confirm-send"><i class="fas fa-paper-plane me-2"></i>Approve & Send</button>
+            <div class="modal-footer bg-white border-top-0 py-3">
+                <button type="button" class="btn btn-outline-secondary btn-lg rounded-pill px-4" id="confirm-skip">
+                    <i class="fas fa-forward me-2"></i>Skip
+                </button>
+                <div class="vr mx-2"></div>
+                <button type="button" class="btn btn-success btn-lg rounded-pill px-5 shadow-sm" id="confirm-send">
+                    <i class="fas fa-paper-plane me-2"></i> Approve & Send
+                </button>
             </div>
         </div>
     </div>
@@ -120,14 +233,15 @@
 <script>
 let currentProcessId = null;
 let pollInterval = null;
-const POLLING_INTERVAL_MS = 3000; // Poll every 3 seconds
+const POLLING_INTERVAL_MS = 3000;
 
 const startBtn = document.getElementById('start-inbox-btn');
 const stopBtn = document.getElementById('stop-inbox-btn');
-const buttonWrapper = document.getElementById('inbox-button-wrapper'); // <-- FIX 2
+const buttonWrapper = document.getElementById('inbox-button-wrapper');
 const statusSection = document.getElementById('status-section');
 const statusContent = document.getElementById('status-content');
 const previewModal = new bootstrap.Modal(document.getElementById('messagePreviewModal'));
+const platformInputs = document.querySelectorAll('input[name="inbox_platform"]');
 
 function setStatus(html, showSpinner = true) {
     statusSection.style.display = 'block';
@@ -146,23 +260,28 @@ function showReplyPreview(data) {
     const contact = preview.contact || {};
     const history = preview.conversation_history || [];
 
-    document.getElementById('preview-name').textContent = contact.name || 'N/A';
-    document.getElementById('preview-role').textContent = contact.title || 'N/A';
+    document.getElementById('preview-name').textContent = contact.name || 'Unknown';
+    document.getElementById('preview-role').textContent = contact.title || 'No Title';
+    
     const profileLink = document.getElementById('preview-linkedin');
     if (contact.linkedin_url) {
         profileLink.href = contact.linkedin_url;
-        profileLink.style.display = 'inline-block';
+        profileLink.classList.remove('disabled');
     } else {
-        profileLink.style.display = 'none';
+        profileLink.href = '#';
+        profileLink.classList.add('disabled');
     }
 
     const messageTextarea = document.getElementById('preview-message');
-    messageTextarea.value = preview.generated_message || 'AI could not generate a response. Please write one manually.';
+    messageTextarea.value = preview.generated_message || '';
     
+    // Character count logic
     const updateCharCount = () => {
         const len = messageTextarea.value.length;
         document.getElementById('message-length').textContent = len;
-        document.getElementById('message-length').classList.toggle('text-danger', len > 300);
+        const countEl = document.getElementById('message-length');
+        if(len > 300) { countEl.className = 'text-danger fw-bold'; } 
+        else { countEl.className = ''; }
     };
     messageTextarea.oninput = updateCharCount;
     updateCharCount();
@@ -170,27 +289,38 @@ function showReplyPreview(data) {
     const intentBadge = document.getElementById('preview-intent');
     if (preview.intent) {
         intentBadge.textContent = preview.intent.replace(/_/g, ' ').toUpperCase();
-        intentBadge.style.display = 'inline-block';
     } else {
-        intentBadge.style.display = 'none';
+        intentBadge.textContent = 'GENERAL';
     }
     
+    // Render History
     const historyList = document.getElementById('preview-history');
     historyList.innerHTML = '';
     
     if (history && history.length > 0) {
+        // Show last 5 messages
         history.slice(-5).forEach(msg => {
-            const isYou = msg.sender && (msg.sender.toLowerCase() === 'you' || msg.sender.toLowerCase().includes('arnav'));
+            const isYou = msg.sender && (msg.sender.toLowerCase() === 'you' || msg.sender.toLowerCase().includes('me'));
+            
             const item = document.createElement('li');
-            item.className = `list-group-item d-flex flex-column ${isYou ? 'align-items-end' : 'align-items-start'}`;
+            item.className = 'mb-3';
+            
+            const bubbleClass = isYou ? 'bg-primary text-white' : 'bg-white border text-dark';
+            const alignClass = isYou ? 'ms-auto' : 'me-auto';
+            const name = isYou ? 'You' : (msg.sender || 'Them');
+            
             item.innerHTML = `
-                <small class="fw-bold ${isYou ? 'text-primary' : ''}">${isYou ? 'You' : (msg.sender || 'Them')}</small>
-                <p class="mb-0 p-2 rounded ${isYou ? 'bg-primary bg-opacity-10' : 'bg-light'}" style="max-width: 90%; word-break: break-word;">${msg.message || ''}</p>
+                <div class="d-flex flex-column ${isYou ? 'align-items-end' : 'align-items-start'}">
+                    <small class="text-muted mb-1" style="font-size: 0.75rem;">${name}</small>
+                    <div class="p-3 rounded-3 shadow-sm ${bubbleClass}" style="max-width: 90%; font-size: 0.9rem;">
+                        ${msg.message || ''}
+                    </div>
+                </div>
             `;
             historyList.appendChild(item);
         });
     } else {
-        historyList.innerHTML = '<li class="list-group-item text-muted">No conversation history available.</li>';
+        historyList.innerHTML = '<li class="text-center text-muted p-3">No history found</li>';
     }
 
     previewModal.show();
@@ -199,12 +329,8 @@ function showReplyPreview(data) {
 function sendInboxAction(action) {
     const message = document.getElementById('preview-message').value;
     
-    if (action !== 'skip' && !message.trim()) {
-        alert('Message cannot be empty.');
-        return;
-    }
-    if (action !== 'skip' && message.length > 300) {
-        alert('Message is too long. Please keep it under 300 characters.');
+    if (action === 'send' && !message.trim()) {
+        alert('Please enter a message to send.');
         return;
     }
 
@@ -223,23 +349,21 @@ function sendInboxAction(action) {
     .then(data => {
         if (data.success) {
             previewModal.hide();
-            setStatus('Action confirmed. Searching for the next message...');
+            setStatus('Feedback sent! Scanning for next message...');
             pollForAction(); 
         } else {
-            alert('Error processing action: ' + (data.error || 'Unknown error.'));
+            alert('Error: ' + (data.error || 'Unknown error'));
         }
     })
     .catch(err => {
         console.error("Action error:", err);
-        alert('Failed to send action to the server.');
+        alert('Connection failed. Please check your internet.');
     });
 }
 
 function pollForAction() {
     if (!currentProcessId) return;
     if (pollInterval) clearInterval(pollInterval);
-    
-    setStatus('Client is searching for a message that needs a reply...');
     
     pollInterval = setInterval(() => {
         fetch(`/api/inbox_preview/${currentProcessId}`)
@@ -248,94 +372,98 @@ function pollForAction() {
                 return res.json();
             })
             .then(data => {
-                console.log("Polling for preview...", data);
                 if (data.awaiting_confirmation === true) {
                     clearInterval(pollInterval); 
                     pollInterval = null;
-                    setStatus('Action required. Please review the suggested reply.', false);
+                    setStatus('Action Required: Please review suggested reply', false);
                     showReplyPreview(data);
                 }
                 else if (data.status === 'completed' || data.status === 'stopped' || data.status === 'failed') {
                     clearInterval(pollInterval);
                     pollInterval = null;
-                    setStatus(`Task finished with status: ${data.status}`, false);
-                    buttonWrapper.classList.remove('is-running'); // <-- FIX 2
+                    setStatus(`Task ${data.status}`, false);
+                    
+                    // Reset UI
+                    buttonWrapper.classList.remove('is-running');
+                    document.querySelector('.platform-selector-container').style.opacity = '1';
+                    document.querySelector('.platform-selector-container').style.pointerEvents = 'auto';
                     startBtn.disabled = false;
-                    startBtn.innerHTML = '<i class="fas fa-play-circle me-2"></i> Find Next Message';
+                    startBtn.innerHTML = '<i class="fas fa-play me-2"></i> Find Next Message';
+                    
+                    if (data.status === 'completed') {
+                        updateCounts(data.stats || {});
+                    }
                 }
             })
-            .catch(err => {
-                console.error("Polling error:", err);
-            });
+            .catch(err => console.error("Polling error:", err));
     }, POLLING_INTERVAL_MS);
 }
 
-// Start button event listener
+// START BUTTON CLICK
 startBtn.addEventListener('click', () => {
+    // 1. Get Selected Platform
+    const selectedPlatform = document.querySelector('input[name="inbox_platform"]:checked').value;
+    const platformName = selectedPlatform === 'sales_navigator' ? 'Sales Navigator' : 'LinkedIn';
+
+    // 2. Lock UI
     startBtn.disabled = true;
-    startBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Starting Task...';
+    startBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span> Initializing...';
     
-    fetch("{{ url_for('ai_inbox') }}", { method: 'POST' })
-        .then(res => {
-            if (!res.ok) throw new Error(`Server error: ${res.statusText}`);
-            return res.json();
-        })
-        .then(data => {
-            if (data.success && data.task_id) {
-                currentProcessId = data.task_id;
-                buttonWrapper.classList.add('is-running'); // <-- FIX 2
-                pollForAction(); 
-            } else {
-                setStatus(`<strong class="text-danger">Error:</strong> ${data.error || 'Could not start task.'}`, false);
-                startBtn.disabled = false;
-                startBtn.innerHTML = '<i class="fas fa-play-circle me-2"></i> Try Again';
-            }
-        })
-        .catch(err => {
-            console.error("Start task error:", err);
-            setStatus(`<strong class="text-danger">Error:</strong> Failed to start the task. Please check the client connection.`, false);
-            startBtn.disabled = false;
-            startBtn.innerHTML = '<i class="fas fa-play-circle me-2"></i> Try Again';
-        });
-});
-
-// --- FIX 1: Corrected Stop button event listener ---
-stopBtn.addEventListener('click', () => {
-    if (!currentProcessId) return;
-
-    if (!confirm('Are you sure you want to stop the current inbox task?')) {
-        return;
-    }
-
-    stopBtn.disabled = true;
-    stopBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Stopping...';
-    if (pollInterval) clearInterval(pollInterval); // Stop polling
-    
-    // --- THIS IS THE FIX ---
-    // The URL is /stop_task/<task_id> and it does not need a JSON body
-    fetch(`/stop_task/${currentProcessId}`, { 
-        method: 'POST'
-        // No headers or body needed
+    // 3. Send Request
+    fetch("{{ url_for('ai_inbox') }}", { 
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ platform: selectedPlatform })  // <-- SENDING PLATFORM
     })
-    .then(res => res.json())
+    .then(res => {
+        if (!res.ok) throw new Error(`Server error: ${res.statusText}`);
+        return res.json();
+    })
     .then(data => {
-        if (data.success) {
-            setStatus('Stop request sent. The client will stop shortly.', false);
+        if (data.success && data.task_id) {
+            currentProcessId = data.task_id;
+            buttonWrapper.classList.add('is-running');
+            setStatus(`Connected to ${platformName}. Scanning inbox...`);
+            pollForAction(); 
         } else {
-            setStatus(`<strong class="text-danger">Error:</strong> ${data.error || 'Could not stop task.'}`, false);
+            setStatus(`<strong class="text-danger">Error:</strong> ${data.error || 'Failed to start'}`, false);
+            startBtn.disabled = false;
+            startBtn.innerHTML = '<i class="fas fa-play me-2"></i> Try Again';
         }
     })
     .catch(err => {
-        console.error("Stop task error:", err);
-        setStatus(`<strong class="text-danger">Error:</strong> Failed to send stop request.`, false);
-    })
-    .finally(() => {
-        // Reset UI
-        buttonWrapper.classList.remove('is-running'); 
-        stopBtn.disabled = false;
-        stopBtn.innerHTML = '<i class="fas fa-stop-circle me-2"></i> Stop Task';
+        console.error("Start error:", err);
+        setStatus(`<strong class="text-danger">Error:</strong> Connection failed`, false);
         startBtn.disabled = false;
-        startBtn.innerHTML = '<i class="fas fa-play-circle me-2"></i> Find Next Message';
+        startBtn.innerHTML = '<i class="fas fa-play me-2"></i> Try Again';
+    });
+});
+
+// STOP BUTTON CLICK
+stopBtn.addEventListener('click', () => {
+    if (!currentProcessId) return;
+    if (!confirm('Stop the current task?')) return;
+
+    stopBtn.disabled = true;
+    stopBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span> Stopping...';
+    if (pollInterval) clearInterval(pollInterval);
+    
+    fetch(`/stop_task/${currentProcessId}`, { method: 'POST' })
+    .then(res => res.json())
+    .then(data => {
+        setStatus('Stopping task...', true);
+    })
+    .catch(err => console.error("Stop error:", err))
+    .finally(() => {
+        setTimeout(() => {
+            buttonWrapper.classList.remove('is-running');
+            document.querySelector('.platform-selector-container').style.opacity = '1';
+            document.querySelector('.platform-selector-container').style.pointerEvents = 'auto';
+            stopBtn.disabled = false;
+            stopBtn.innerHTML = '<i class="fas fa-stop me-2"></i> Stop Task';
+            startBtn.disabled = false;
+            startBtn.innerHTML = '<i class="fas fa-play me-2"></i> Find Next Message';
+        }, 1000);
     });
 });
 
