@@ -74,6 +74,17 @@ def login_required(f):
     decorated_function.__name__ = f.__name__
     return decorated_function
 
+def subscription_required(f):
+    """Decorator to require an active subscription"""
+    def decorated_function(*args, **kwargs):
+        user = get_current_user()
+        if not user or not user.is_subscription_active():
+            flash('Your trial has ended. Please upgrade to continue.', 'error')
+            return redirect(url_for('pricing'))
+        return f(*args, **kwargs)
+    decorated_function.__name__ = f.__name__
+    return decorated_function
+
 def get_current_user():
     """Get current logged-in user"""
     if 'user_id' in session:
@@ -191,6 +202,7 @@ client_manager = ClientManager()
 
 @application.route('/client_setup')
 @login_required
+@subscription_required
 def client_setup():
     """Show client setup instructions with real-time status"""
     user = get_current_user()
@@ -208,6 +220,7 @@ def client_setup():
 
 @application.route('/profile')
 @login_required
+@subscription_required
 def profile():
     user = get_current_user()
     if not user:
@@ -231,6 +244,7 @@ def profile():
 
 @application.route('/api/client-status')
 @login_required
+@subscription_required
 def api_client_status():
     """Get real-time client status for the logged-in user"""
     user = get_current_user()
@@ -346,6 +360,7 @@ def login():
 
 @application.route('/dashboard')
 @login_required
+@subscription_required
 def dashboard():
     user = get_current_user()
     
@@ -470,6 +485,7 @@ def dashboard():
 
 @application.route('/trigger-network-sync', methods=['POST'])
 @login_required
+@subscription_required
 @linkedin_setup_required
 def trigger_network_sync():
     """Queues a task to sync network statistics."""
@@ -511,6 +527,7 @@ def trigger_network_sync():
 
 @application.route('/stop_task/<task_id>', methods=['POST'])
 @login_required
+@subscription_required
 def stop_task(task_id):
     """User-initiated stop for a running task (campaign/search/inbox)."""
     user = get_current_user()
@@ -567,6 +584,7 @@ def contact():
 
 @application.route('/settings', methods=['GET', 'POST'])
 @login_required
+@subscription_required
 def settings():
     user = get_current_user()
 
@@ -599,6 +617,7 @@ def settings():
 
 @application.route('/ai_handler', methods=['GET', 'POST'])
 @login_required
+@subscription_required
 @linkedin_setup_required
 def ai_handler():
     user = get_current_user()
@@ -635,6 +654,7 @@ def ai_handler():
 @application.route('/api/generate-message', methods=['POST'])
 @login_required
 @linkedin_setup_required
+@subscription_required
 def api_generate_message():
     """Generate AI message for a specific contact"""
     try:
@@ -727,6 +747,7 @@ Generate only the message text, no labels or formatting."""
 @application.route('/api/preview-campaign-messages', methods=['POST'])
 @login_required
 @linkedin_setup_required
+@subscription_required
 def api_preview_campaign_messages():
     """Generate preview messages for multiple contacts in campaign"""
     try:
@@ -809,7 +830,8 @@ Keep under 280 characters, use first name only, be professional and genuine."""
     
 @application.route('/outreach', methods=['GET', 'POST'])
 @login_required
-@linkedin_setup_required  
+@linkedin_setup_required
+@subscription_required
 def outreach():
     user = get_current_user()
     
@@ -988,6 +1010,7 @@ def handle_campaign_start(user):
 
 @application.route('/api/update-campaign-message', methods=['POST'])
 @login_required
+@subscription_required
 def api_update_campaign_message():
     """Update a specific message in the campaign preview"""
     try:
@@ -1025,6 +1048,7 @@ def api_update_campaign_message():
 @application.route('/start_collection', methods=['POST'])
 @login_required
 @linkedin_setup_required
+@subscription_required
 def start_collection():
     user = get_current_user()
     try:
@@ -1081,6 +1105,7 @@ def start_collection():
 # NEW: Route to display collected profiles and build a campaign
 @application.route('/campaign_builder/<collection_id>')
 @login_required
+@subscription_required
 def campaign_builder(collection_id):
     user = get_current_user()
     collection_data = collection_results_cache.get(collection_id)
@@ -1096,6 +1121,7 @@ def campaign_builder(collection_id):
 # NEW: API endpoint to get collection status
 @application.route('/collection_status/<collection_id>')
 @login_required
+@subscription_required
 def collection_status(collection_id):
     return jsonify(collection_results_cache.get(collection_id, {'status': 'not_found'}))
 
@@ -1103,6 +1129,7 @@ def collection_status(collection_id):
 # NEW: Route to create a campaign from selected profiles
 @application.route('/create_campaign_from_selection', methods=['POST'])
 @login_required
+@subscription_required
 def create_campaign_from_selection():
     try:
         collection_id = request.form.get('collection_id')
@@ -1159,6 +1186,7 @@ def create_campaign_from_selection():
 
 @application.route('/start_campaign', methods=['POST'])
 @login_required
+@subscription_required
 def start_campaign():
     user = get_current_user()
     campaign_id = request.json.get('campaign_id')
@@ -1199,6 +1227,7 @@ def start_campaign():
 
 @application.route('/campaign_action', methods=['POST'])
 @login_required
+@subscription_required
 def campaign_action():
     user = get_current_user()
     data = request.json
@@ -1230,6 +1259,7 @@ def campaign_action():
 
 @application.route('/stop_campaign', methods=['POST'])
 @login_required
+@subscription_required
 def stop_campaign():
     cid = request.json.get('campaign_id')
     if not cid:
@@ -1240,6 +1270,8 @@ def stop_campaign():
 
 @application.route('/contact_action', methods=['POST'])
 @login_required
+@subscription_required
+@subscription_required
 def contact_action():
     data = request.json
     cid = data.get('campaign_id')
@@ -1251,6 +1283,7 @@ def contact_action():
 
 @application.route('/campaign_results/<campaign_id>')
 @login_required
+@subscription_required
 def get_campaign_results(campaign_id):
     # This now just returns the cached data, which is updated by the client
     return jsonify(campaign_results.get(campaign_id, {}))
@@ -1258,6 +1291,7 @@ def get_campaign_results(campaign_id):
 
 @application.route('/campaign_status')
 @login_required
+@subscription_required
 def campaign_status():
     return jsonify(automation_status)
 
@@ -1266,6 +1300,7 @@ def campaign_status():
 @application.route('/keyword_search', methods=['GET', 'POST'])
 @login_required
 @linkedin_setup_required
+@subscription_required
 def keyword_search():
     user = get_current_user()
     if request.method == 'POST':
@@ -1320,12 +1355,14 @@ def keyword_search():
 
 @application.route('/search_results/<search_id>')
 @login_required
+@subscription_required
 def get_search_results(search_id):
     results = search_results_cache.get(search_id, {})
     return jsonify(results)
 
 @application.route('/preview_message', methods=['POST'])
 @login_required
+@subscription_required
 def preview_message():
     """Preview message before sending in campaign - ENHANCED"""
     try:
@@ -1635,6 +1672,7 @@ def api_task_result():
 
 @application.route('/confirm_message_action', methods=['POST'])
 @login_required
+@subscription_required
 def confirm_message_action():
     """Handle user decision on message (send/skip/edit)"""
     try:
@@ -1666,6 +1704,7 @@ def confirm_message_action():
     
 @application.route('/api/dashboard-status')
 @login_required
+@subscription_required
 def api_dashboard_status():
     """Get dashboard status including client connectivity"""
     user = get_current_user()
@@ -1738,6 +1777,7 @@ def api_inbox_results():
 @application.route('/ai_inbox', methods=['GET', 'POST'])
 @login_required
 @linkedin_setup_required
+@subscription_required
 def ai_inbox():
     user = get_current_user()
     
@@ -1773,6 +1813,7 @@ inbox_preview_states = {}
 # In app.py - Replace the @app.route('/api/inbox_preview/<process_id>') GET endpoint
 @application.route('/api/inbox_preview/<session_id>', methods=['GET'])
 @login_required
+@subscription_required
 def get_inbox_preview_status(session_id):
     """
     Frontend polls this endpoint to check if there is a preview waiting for user action.
@@ -1797,6 +1838,7 @@ def get_inbox_preview_by_process(process_id):
 
 @application.route('/api/inbox_action', methods=['POST'])
 @login_required
+@subscription_required
 def inbox_action():
     """
     Receives the user's decision (send/edit/skip) from the frontend
@@ -1898,6 +1940,7 @@ def get_inbox_results_by_process(process_id):
 
 @application.route('/inbox_results/<process_id>')
 @login_required
+@subscription_required
 def get_inbox_results(process_id):
     """Get inbox results for a specific process - FIXED VERSION"""
     # Check both inbox_results and inbox_preview_states
@@ -1969,6 +2012,7 @@ def api_client_ping():
     
 @application.route('/api/campaign-progress/<campaign_id>')
 @login_required
+@subscription_required
 def get_campaign_progress(campaign_id):
     """Get campaign progress for frontend display"""
     progress = campaign_results.get(campaign_id, {})
@@ -2062,6 +2106,7 @@ def receive_search_results():
 
 @application.route('/authorize-google')
 @login_required
+@subscription_required
 def authorize_google():
     """
     Redirects the user to Google's OAuth 2.0 consent screen.
@@ -2090,6 +2135,7 @@ def authorize_google():
 
 @application.route('/deauthorize-google', methods=['POST'])
 @login_required
+@subscription_required
 def deauthorize_google():
     """Disconnect Google Account"""
     try:
@@ -2104,6 +2150,7 @@ def deauthorize_google():
 
 @application.route('/deauthorize-hubspot', methods=['POST'])
 @login_required
+@subscription_required
 def deauthorize_hubspot():
     """Disconnect HubSpot Account"""
     try:
@@ -2118,9 +2165,32 @@ def deauthorize_hubspot():
         flash(f'Error disconnecting HubSpot: {str(e)}', 'error')
     return redirect(url_for('settings'))
 
+@application.route('/fix-subscriptions')
+@login_required
+def fix_subscriptions():
+    from datetime import datetime, timedelta
+    
+    # METHOD 1: The "Surgical" Bulk Update (Recommended)
+    # This sends a direct instruction to MongoDB: "Find users missing this field and set it."
+    
+    # 1. Fix missing status
+    # This updates all users where 'subscription_status' does NOT exist
+    status_count = User.objects(subscription_status__exists=False).update(
+        set__subscription_status='trial'
+    )
+
+    # 2. Fix missing dates
+    # We set the expiry to 30 days from NOW for anyone missing the date
+    expiry_date = datetime.utcnow() + timedelta(days=30)
+    date_count = User.objects(subscription_ends_at__exists=False).update(
+        set__subscription_ends_at=expiry_date
+    )
+
+    return f"Database patched: Set status for {status_count} users, Set dates for {date_count} users."
 
 @application.route('/oauth2callback')
 @login_required
+@subscription_required
 def oauth2callback():
     """
     Handles the callback from Google after user consent.
@@ -2161,6 +2231,7 @@ def oauth2callback():
 
 @application.route('/calendar')
 @login_required
+@subscription_required
 def calendar_view():
     """Render the Calendar/Scheduler page"""
     user = get_current_user()
@@ -2189,6 +2260,7 @@ def api_get_upcoming_events():
 
 @application.route('/authorize-hubspot')
 @login_required
+@subscription_required
 def authorize_hubspot():
     """Redirects user to HubSpot to approve the app."""
     auth_url = hubspot_services.get_auth_url()
@@ -2196,6 +2268,7 @@ def authorize_hubspot():
 
 @application.route('/oauth2callback-hubspot')
 @login_required
+@subscription_required
 def oauth2callback_hubspot():
     """Handles the return from HubSpot."""
     user = get_current_user()
@@ -2228,6 +2301,7 @@ def oauth2callback_hubspot():
 # Optional: Test Endpoint to manually create a lead
 @application.route('/test-hubspot-lead', methods=['POST'])
 @login_required
+@subscription_required
 def test_hubspot_lead():
     user = get_current_user()
     if not user.hubspot_access_token:

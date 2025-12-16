@@ -30,7 +30,7 @@ class User(Document):
     # Temporary plain password storage for LinkedIn automation (not recommended for production)
     _linkedin_password_plain = None
     subscription_status = StringField(default='trial', required=True)
-    subscription_ends_at = DateTimeField(default=lambda: datetime.utcnow() + timedelta(days=30))
+    subscription_ends_at = DateTimeField(default=lambda: datetime.utcnow() + timedelta(days=60))
     #stripe_customer_id = StringField()
     meta = {
         'collection': 'users'
