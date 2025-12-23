@@ -72,16 +72,14 @@ def build_service_from_user(user: User, service_name: str, service_version: str)
          return None
 
     try:
-        # Safely extract credentials from the loaded dictionary
-        # Support both 'web' and 'installed' formats just in case
         config_root = _GOOGLE_CONFIG.get('web') or _GOOGLE_CONFIG.get('installed')
         
         if not config_root:
-            print("Error: Invalid client config format (missing 'web' or 'installed' key)")
+            print("Error: Invalid client config format")
             return None
 
         credentials = google.oauth2.credentials.Credentials(
-            token=None, 
+            token=None,  # Access token is None to force refresh usage
             refresh_token=user.google_refresh_token,
             token_uri='https://oauth2.googleapis.com/token',
             client_id=config_root.get('client_id'),
@@ -89,12 +87,26 @@ def build_service_from_user(user: User, service_name: str, service_version: str)
             scopes=user.google_scopes
         )
         
+        # --- FIX: Proactively refresh the token if needed ---
+        if not credentials.valid:
+            try:
+                request = Request()
+                credentials.refresh(request)
+                # Optional: Save the new access token to DB if you were storing access tokens
+                # user.google_access_token = credentials.token
+                # user.save()
+            except RefreshError:
+                print(f"❌ Google Token Expired/Revoked for {user.email}. User needs to re-login.")
+                return None
+            except Exception as e:
+                print(f"❌ Error refreshing Google token: {e}")
+                return None
+        
         service = build(
             service_name,
             service_version,
             credentials=credentials
         )
-        
         return service
         
     except Exception as e:
@@ -138,22 +150,21 @@ def send_email(user: User, to_email: str, subject: str, body: str) -> dict:
 def find_free_slots(user: User, duration_minutes: int = 30, days_ahead: int = 7) -> list:
     """
     Finds available time slots on the user's primary calendar.
-    
     """
     try:
         service = build_service_from_user(user, 'calendar', 'v3')
         if not service:
-            raise Exception("Failed to build Calendar service.")
+            # Explicitly raise error if service failed (e.g. auth failed)
+            raise ValueError("Authentication Failed or Token Expired")
             
         # Set time range
         now_utc = datetime.now(timezone.utc)
-        time_min_obj = now_utc.replace(hour=9, minute=0, second=0, microsecond=0) # Start today at 9am
-        time_max_obj = (now_utc + timedelta(days=days_ahead)).replace(hour=17, minute=0, second=0, microsecond=0) # End in 7 days at 5pm
+        time_min_obj = now_utc.replace(hour=9, minute=0, second=0, microsecond=0)
+        time_max_obj = (now_utc + timedelta(days=days_ahead)).replace(hour=17, minute=0, second=0, microsecond=0)
 
         time_min = time_min_obj.isoformat()
         time_max = time_max_obj.isoformat()
 
-        # Call the FreeBusy API
         freebusy_query = {
             "timeMin": time_min,
             "timeMax": time_max,
@@ -161,27 +172,28 @@ def find_free_slots(user: User, duration_minutes: int = 30, days_ahead: int = 7)
             "items": [{"id": "primary"}]
         }
         
-        results = service.freebusy().query(body=freebusy_query).execute()
+        # Add error handling specifically for the API call
+        try:
+            results = service.freebusy().query(body=freebusy_query).execute()
+        except Exception as api_error:
+             print(f"❌ Google Calendar API Error: {api_error}")
+             return []
         
         busy_slots = results.get('calendars', {}).get('primary', {}).get('busy', [])
         
-        # --- Simple Slot Finding Logic ---
         available_slots = []
         slot_start = time_min_obj
         duration = timedelta(minutes=duration_minutes)
         
         while slot_start + duration <= time_max_obj:
-            # Only check slots within "working hours" (e.g., 9-5)
             if 9 <= slot_start.hour < 17:
                 is_busy = False
                 slot_end = slot_start + duration
                 
-                # Check against busy slots
                 for busy in busy_slots:
                     busy_start = datetime.fromisoformat(busy['start'])
                     busy_end = datetime.fromisoformat(busy['end'])
                     
-                    # Check for overlap
                     if max(slot_start, busy_start) < min(slot_end, busy_end):
                         is_busy = True
                         break
@@ -189,14 +201,11 @@ def find_free_slots(user: User, duration_minutes: int = 30, days_ahead: int = 7)
                 if not is_busy:
                     available_slots.append(slot_start)
                     
-            # Move to the next slot (e.g., 30 min increments)
             slot_start += duration
             
-            # If end of day, jump to next morning
             if slot_start.hour >= 17:
                 slot_start = slot_start.replace(hour=9, minute=0) + timedelta(days=1)
 
-        # Return the first 5 available slots
         return available_slots[:5]
 
     except Exception as e:

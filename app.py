@@ -1553,6 +1553,11 @@ def api_google_free_slots():
         
         return jsonify({'success': True, 'slots': slot_strings})
         
+    except ValueError as ve:
+        # Catch the specific auth error raised in google_services
+        if "Token Expired" in str(ve):
+             return jsonify({'error': 'Google Token Expired. Please Re-login.'}), 401
+        return jsonify({'error': str(ve)}), 500
     except Exception as e:
         logger.error(f"Error finding free slots: {e}")
         return jsonify({'error': str(e)}), 500
@@ -1783,30 +1788,36 @@ def ai_inbox():
     
     if request.method == 'POST':
         try:
+            # 1. Get the platform from the request JSON
+            data = request.json or {}
+            selected_platform = data.get('platform', 'linkedin')
+            
+            # 2. Determine the correct task type
+            task_type = 'process_inbox'
+            if selected_platform == 'sales_navigator':
+                task_type = 'process_sales_nav_inbox'
+
             process_id = str(uuid.uuid4())
+            
             task=Task(
                 user=user,
-                task_type='process_inbox',
+                task_type=task_type, # 3. Use the dynamic task type
                 params={'process_id': process_id},
                 status='queued'
             )
             task.save()
-            logger.info(f"✅ Queued 'process_inbox' task {task.id} for user {user.email}")
+            logger.info(f"✅ Queued '{task_type}' task {task.id} for user {user.email}")
             
-            # FIX: Return a JSON response instead of redirecting
             return jsonify({
                 'success': True, 
                 'message': 'Task queued successfully!', 
-                'task_id': process_id  # Use the same ID for polling
+                'task_id': process_id
             })
             
         except Exception as e:
             logger.error(f"Inbox processing error: {e}")
             return jsonify({'success': False, 'error': str(e)}), 500
     
-    # GET request - show the page
-    # You can add logic here to find the latest running task for this user
-    # and pass its ID to the template as `current_inbox_process_id`
     return render_template('ai_inbox.html', user=user)
 inbox_preview_states = {}
 
