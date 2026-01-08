@@ -126,3 +126,17 @@ class Task(Document):
     def __repr__(self):
         return f"<Task {self.id} type={self.task_type} user={self.user.email}>"
 
+class Payment(Document):
+    meta = {'collection': 'payments'}
+
+    user = ReferenceField(User, required=True)
+    razorpay_order_id = StringField(required=True)
+    razorpay_payment_id = StringField()
+    razorpay_signature = StringField()
+    amount = IntField(required=True)  # Stored in smallest currency unit (paise)
+    currency = StringField(default='USD')
+    status = StringField(default='created') # created, paid, failed
+    created_at = DateTimeField(default=datetime.utcnow)
+    
+    def __repr__(self):
+        return f"<Payment {self.razorpay_order_id} - {self.status}>"

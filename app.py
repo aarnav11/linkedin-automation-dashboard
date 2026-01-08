@@ -23,6 +23,8 @@ import google_services
 import google.oauth2.credentials
 from werkzeug.middleware.proxy_fix import ProxyFix
 import hubspot_services
+import hmac
+import hashlib
 # Load environment variables from .env file
 load_dotenv()
 
@@ -33,7 +35,6 @@ logger = logging.getLogger(__name__)
 campaign_results = {}
 search_results_cache = {}
 inbox_results = {}
-collection_results_cache = {}
 automation_status = {
     'running': False,
     'awaiting': False,   # waiting for user decision on current contact
@@ -1078,26 +1079,6 @@ def start_collection():
         }
 
         # Create a DB task that worker/clients will pick up
-        task = Task(
-            user=user,
-            task_type='collect_profiles',
-            params={
-                'collection_id': collection_id,
-                'collection_params': collection_params,
-                'user_config': {
-                    'linkedin_email': user.linkedin_email,
-                    'linkedin_password': user.linkedin_password,
-                    'gemini_api_key': user.gemini_api_key
-                }
-            },
-            status='queued'
-        )
-        task.save()
-
-        flash(f'Profile collection has been queued for up to {max_profiles} profiles. You will be redirected to the results page.', 'success')
-        session['current_collection_id'] = collection_id
-        return redirect(url_for('campaign_builder', collection_id=collection_id))
-
     except Exception as e:
         flash(f'Error starting collection: {e}', 'error')
         return redirect(url_for('outreach'))
@@ -2327,6 +2308,82 @@ def test_hubspot_lead():
         linkedin_url=data.get('linkedin_url')
     )
     return jsonify(result)
+
+sales_nav_lists_cache = {}
+
+@application.route('/fetch_sales_nav_lists', methods=['POST'])
+@login_required
+@subscription_required
+def fetch_sales_nav_lists():
+    user = get_current_user()
+    task_id = str(uuid.uuid4())
+    
+    # Create task for client
+    task = Task(
+        user=user,
+        task_type='fetch_sales_nav_lists',
+        params={'task_id': task_id},
+        status='queued'
+    )
+    task.save()
+    
+    return jsonify({'success': True, 'task_id': task_id, 'message': 'Fetching lists from Sales Navigator...'})
+
+@application.route('/get_sales_nav_lists/<task_id>')
+@login_required
+def get_sales_nav_lists(task_id):
+    # Check if task is done and results are cached
+    # The client reports results via /api/task-result which updates the Task object
+    try:
+        task = Task.objects.get(id=task_id)
+        if task.status == 'completed' and task.result:
+            lists = task.result.get('payload', {}).get('lists', [])
+            return jsonify({'success': True, 'completed': True, 'lists': lists})
+        elif task.status == 'failed':
+            return jsonify({'success': False, 'completed': True, 'error': task.error})
+        else:
+            return jsonify({'success': True, 'completed': False})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+@application.route('/start_sales_nav_campaign', methods=['POST'])
+@login_required
+@subscription_required
+def start_sales_nav_campaign():
+    user = get_current_user()
+    data = request.json
+    
+    list_url = data.get('list_url')
+    max_contacts = data.get('max_contacts', 10)
+    
+    if not list_url:
+        return jsonify({'error': 'No list URL provided'}), 400
+
+    campaign_id = str(uuid.uuid4())
+    
+    task = Task(
+        user=user,
+        task_type='sales_nav_outreach_campaign',
+        params={
+            'campaign_id': campaign_id,
+            'campaign_params': {
+                'list_url': list_url,
+                'max_contacts': max_contacts
+            },
+            'user_config': {
+                'linkedin_email': user.linkedin_email,
+                'linkedin_password': user.linkedin_password,
+                'gemini_api_key': user.gemini_api_key
+            }
+        },
+        status='queued'
+    )
+    task.save()
+    
+    # Initialize result cache
+    campaign_results[campaign_id] = {'status': 'initializing'}
+
+    return jsonify({'success': True, 'campaign_id': campaign_id, 'message': 'Sales Nav Campaign Started'})
     
 @application.route('/logout')
 @login_required
@@ -2344,6 +2401,69 @@ def not_found_error(error):
 @application.errorhandler(500)
 def internal_error(error):
     return render_template('500.html'), 500
+
+@application.route('/payment-success')
+@login_required
+def payment_success():
+    """
+    Handles the redirect from Razorpay Payment Page.
+    Verifies signature and upgrades user.
+    """
+    try:
+        # 1. Get parameters from URL
+        payment_id = request.args.get('razorpay_payment_id')
+        payment_status = request.args.get('razorpay_payment_status')
+        payment_link_id = request.args.get('razorpay_payment_link_id')
+        reference_id = request.args.get('razorpay_payment_link_reference_id')
+        signature = request.args.get('razorpay_signature')
+
+        # 2. Security Check: Verify Signature
+        # We construct the message exactly how Razorpay expects it
+        # Format: payment_link_id + '|' + payment_link_reference_id + '|' + payment_status + '|' + payment_id
+        msg = f"{payment_link_id}|{reference_id}|{payment_status}|{payment_id}"
+        
+        # Get your Secret Key from .env
+        secret = os.environ.get('RAZORPAY_KEY_SECRET')
+        if not secret:
+            flash("Configuration error: Missing Payment Secret", "error")
+            return redirect(url_for('dashboard'))
+
+        # Calculate HMAC SHA256
+        generated_signature = hmac.new(
+            secret.encode('utf-8'),
+            msg.encode('utf-8'),
+            hashlib.sha256
+        ).hexdigest()
+
+        # Compare signatures (securely)
+        if not hmac.compare_digest(generated_signature, signature):
+            logger.warning(f"Invalid payment signature for user {reference_id}")
+            flash('Payment verification failed. Please contact support.', 'error')
+            return redirect(url_for('dashboard'))
+
+        # 3. Validation Passed: Upgrade the User
+        if payment_status == 'paid':
+            # We use the reference_id (User ID) we sent to Razorpay
+            user = User.objects.get(id=reference_id)
+            
+            user.subscription_status = 'active'
+            # Add 30 days from today
+            user.subscription_ends_at = datetime.utcnow() + timedelta(days=30)
+            user.save()
+            
+            # Optional: Log payment to DB (Simple version)
+            # You can add the Payment model I shared previously if you want history.
+
+            flash('Payment successful! Your Pro plan is active.', 'success')
+            return redirect(url_for('dashboard'))
+        else:
+            flash('Payment failed or was cancelled.', 'error')
+            return redirect(url_for('pricing'))
+
+    except Exception as e:
+        logger.error(f"Payment Error: {e}")
+        flash('An error occurred verifying your payment.', 'error')
+        return redirect(url_for('dashboard'))
 
 if __name__ == '__main__':
     print(f"Starting Flask app...")

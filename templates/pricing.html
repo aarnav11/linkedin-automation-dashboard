@@ -49,8 +49,16 @@
                         <li>HubSpot Integration</li>
                         <li>Priority Email Support</li>
                     </ul>
-                    <a href="#" class="btn btn-lg btn-block btn-primary">Get Started</a>
-                </div>
+                    {% if user.subscription_status == 'active' %}
+        <button class="btn btn-lg btn-block btn-success" disabled>Plan Active</button>
+        <p class="mt-2 text-muted small">Renews on {{ user.subscription_ends_at.strftime('%Y-%m-%d') }}</p>
+    {% else %}
+        <a href="https://rzp.io/rzp/oXvW05x?reference_id={{ user.id }}" 
+           class="btn btn-lg btn-block btn-primary">
+            Upgrade Now
+                </a>
+            {% endif %}
+            </div>
             </div>
         </div>
 
