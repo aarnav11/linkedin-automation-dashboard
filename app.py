@@ -254,12 +254,11 @@ def api_client_status():
 
 @application.route('/')
 def landing():
-    # If user is already logged in, redirect to dashboard
     if 'user_id' in session:
         return redirect(url_for('dashboard'))
     
     # Show landing page for non-logged-in users
-    return render_template('landing.html')
+    return redirect(url_for('login'))
 
 @application.route('/register', methods=['GET', 'POST'])
 def register():
